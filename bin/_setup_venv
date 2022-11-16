@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -e
+
+source $(dirname "$0")/_config
+
+if ! [ -x "$(command -v pyenv)" ]; then
+    echo -e "\n ⛔️  Please install pyenv and pyenv-virtualenv and configure your shell environment to proceed."
+    echo -e "https://github.com/pyenv/pyenv#homebrew-in-macos"
+    echo -e ""
+    exit 1
+else
+    # Update pyenv
+    echo -e "\n🛠 Pyenv exists, updating pyenv..."
+    brew update && brew upgrade pyenv
+    echo -e "\n🐍 Checking Python $PYTHON_VERSION"
+    if [ -e ~/.pyenv/versions/$PYTHON_VERSION ]; then
+        echo -e "\nPython $PYTHON_VERSION already exists."
+    else
+        echo -e "\nInstalling Python $PYTHON_VERSION"
+        pyenv install $PYTHON_VERSION
+    fi
+
+    eval "$(pyenv init -)"
+    eval "$(pyenv virtualenv-init -)"
+
+    echo -e "\n ☕️ Creating virtual environment"
+    env PYTHON_CONFIGURE_OPTS="--enable-framework CC=clang" pyenv virtualenv --force $PYTHON_VERSION "$VENV_NAME"
+    pyenv local "$VENV_NAME"
+    pyenv activate "$VENV_NAME"
+
+    echo -e "\n📦 Installing dependencies..."
+    pip install --upgrade pip setuptools wheel
+    pip install poetry
+    poetry install
+    echo -e "\n🪝 Installing Pre-commit..."
+    pre-commit install
+    echo -e "\n ✅ Done."
+fi

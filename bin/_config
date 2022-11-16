@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# This file contains constants that are re-used
+# across many build scripts
+
+export PYTHON_VERSION=3.10.8
+export VENV_NAME=temp_venv

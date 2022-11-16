@@ -1,0 +1,65 @@
+[tool.poetry]
+name = "template_project"
+version = "0.1.0"
+description = "This is the Python project template"
+authors = ["Joon Kang <denim.bluu@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+pandas = "^1.4.3"
+matplotlib = "^3.5.2"
+numpy = "^1.23.1"
+scipy = "^1.9.0"
+sklearn = "^0.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+pre-commit = "^2.20.0"
+black = "^22.6.0"
+mypy = "^0.971"
+flake8 = "^5.0.3"
+jupyter = "^1.0.0"
+notebook = "^6.4.12"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+preview = true
+line-length = 88
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.mypy]
+files = "src"
+mypy_path = "src"
+namespace_packages = true
+explicit_package_bases = true
+show_error_codes = true
+strict = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+
+[tool.flake8]
+select = """B,C,E,F,W,T4,B9"""
+exclude = ".venv"
+max-complexity = 18
+max-line-length = 88
+extend-ignore = """
+        E203, E266, E501, W503, F403, F401
+    """
+per-file-ignores = """
+        __init__.py: F401
+        ./src/*: E402
+    """
