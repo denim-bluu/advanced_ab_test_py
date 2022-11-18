@@ -4,6 +4,8 @@ from statsmodels.stats.proportion import proportions_ztest
 from src.base_fields import *
 from dataclasses import dataclass
 
+# TODO: Introduce the function for multiple tests of proportions
+
 
 @dataclass
 class MeanPowerAnalysisInput:
