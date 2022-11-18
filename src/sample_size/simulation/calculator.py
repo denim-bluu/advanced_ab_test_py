@@ -154,7 +154,6 @@ def two_proportions_mc_power_analysis(
     sample_size: int | float,
     base_conversion_rate: float,
     relative_effect: float,
-    n_variant=N_VARIANT,
     alpha: float = ALPHA,
     alternative: str = ALTERNATIVE,
     n_simulation: int = N_SIMULATION,
@@ -165,7 +164,7 @@ def two_proportions_mc_power_analysis(
     if (0.0 > alpha) | (alpha > 1):
         raise ValueError(f"alpha has to be within 1 and 0")
 
-    sample_per_variant = int(np.floor(sample_size / (n_variant + 1)))
+    sample_per_variant = int(np.floor(sample_size / 2))
     significance_results = []
     for _ in range(n_simulation):
         # # Randomly generate binomial data for variant and control with different
