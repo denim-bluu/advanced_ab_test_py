@@ -19,7 +19,7 @@ def multiple_means_mc_power_analysis(
     alternative: str = ALTERNATIVE,
     n_simulation: int = N_SIMULATION,
 ) -> tuple[int | float, np.number | float, np.number]:
-    """Monte Carlo simulation for power analysis for two means
+    """Monte Carlo simulation for power analysis for multiple tests
 
     Args:
         sample_size (int): Size of the sample
