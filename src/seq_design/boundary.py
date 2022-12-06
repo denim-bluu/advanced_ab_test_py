@@ -151,18 +151,8 @@ def sequential_design(
 
 
 def vis_sequential_design(boundary: SDBoundary) -> None:
-    df = pd.DataFrame(
-        [boundary.ts, boundary.upper, boundary.lower],
-        index=[
-            "x",
-            "ub",
-            "lb",
-        ],
-    ).T
+    x, ub, lb = boundary.ts, boundary.upper, boundary.lower
     _, ax = plt.subplots()
-    x = df["x"]
-    ub = df["ub"]
-    lb = df["lb"]
     ax.plot(x, ub, label="Upper Bound")
     ax.plot(x, lb, label="Lower Bound")
     ax.set_xlabel("Sample Proportion per stage", fontsize=14)
