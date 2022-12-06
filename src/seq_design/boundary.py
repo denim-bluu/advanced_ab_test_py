@@ -167,12 +167,3 @@ def vis_sequential_design(boundary: SDBoundary) -> None:
         ax.text(x[index], lb[index], round(lb[index], 2), size=12)
     plt.legend()
     plt.show()
-
-
-# # Example
-# d2 = 48.0
-# d1 = 65
-# alpha = 0.05
-# beta_ = 0.1
-# k = 3
-# sequential_design(3, alpha=0.05, beta_=0.1, delta=1 / 1.75, d1=65)
