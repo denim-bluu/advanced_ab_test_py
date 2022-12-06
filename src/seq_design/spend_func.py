@@ -3,15 +3,17 @@ from numpy import typing as npt
 from scipy import stats as st
 from strenum import StrEnum
 
+from src.base_fields import ALPHA
 from src.stats_func import shift_array
 
 
 class SpendOptions(StrEnum):
-    """ Type of spending functions
+    """Type of spending functions
 
     Args:
         StrEnum (_type_): _description_
     """
+
     OBF = "obrien_fleming"
     POCOCK = "pocock"
     KIM_DEMETS = "kim_demets"
@@ -19,7 +21,7 @@ class SpendOptions(StrEnum):
 
 
 def obrien_fleming(
-    t: float | npt.NDArray[np.number], alpha: float = 0.05
+    t: float | npt.NDArray[np.number], alpha: float = ALPHA
 ) -> npt.NDArray[np.number]:
     """Lan-DeMets O'Brien-Fleming approximation
 
@@ -35,7 +37,7 @@ def obrien_fleming(
 
 
 def pocock(
-    t: float | npt.NDArray[np.number], alpha: float = 0.05
+    t: float | npt.NDArray[np.number], alpha: float = ALPHA
 ) -> npt.NDArray[np.number]:
     """Lan-DeMets Pocock approximation
 
@@ -50,7 +52,7 @@ def pocock(
 
 
 def kim_demets(
-    t: float | npt.NDArray[np.number], alpha: float = 0.05
+    t: float | npt.NDArray[np.number], alpha: float = ALPHA
 ) -> npt.NDArray[np.number]:
     """Kim-DeMets (power) Spending Function
 
@@ -65,7 +67,7 @@ def kim_demets(
 
 
 def hwang_shih_decani(
-    t: float | npt.NDArray[np.number], gamma: float | int = -2, alpha: float = 0.05
+    t: float | npt.NDArray[np.number], gamma: float | int = -2, alpha: float = ALPHA
 ) -> npt.NDArray[np.number]:
     """Hwang-Shih-DeCani Spending Function
 
