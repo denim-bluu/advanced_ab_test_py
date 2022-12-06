@@ -155,7 +155,7 @@ def vis_sequential_design(boundary: SDBoundary) -> None:
     _, ax = plt.subplots()
     ax.plot(x, ub, label="Upper Bound")
     ax.plot(x, lb, label="Lower Bound")
-    ax.set_xlabel("Sample Proportion per stage", fontsize=14)
+    ax.set_xlabel("Sample / Information Proportion", fontsize=14)
     ax.set_ylabel("Z-score", fontsize=14)
     plt.title(f"Group Sequential Method for early stopping (stage={len(x)})")
     for index in range(len(x)):
