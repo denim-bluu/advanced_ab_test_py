@@ -89,7 +89,7 @@ def sequential_design(
     for i in range(1, k):
         ubi = ub[0:i]
         args = (ubi, covmat[1 : (i + 2), 1 : (i + 2)], alpha1[i] - alpha1[i - 1])
-        ub[i] = root(fx1, -3, 10, args=args)
+        ub[i] = root(fx1, -10, 10, args=args)
     while True:
         eta_m = (eta_0 + eta_1) / 2
         lb[0] = st.norm.ppf(beta_1[0]) + eta_m * np.sqrt(ts[0])
@@ -100,7 +100,7 @@ def sequential_design(
                 lbi = lb[0:i]
                 cov = covmat[1 : (i + 2), 1 : (i + 2)]
                 args = (lbi, eta_m, ts, cov, beta_1[i] - beta_1[i - 1])
-                lb[i] = root(fx2, -10, 3, args=args)
+                lb[i] = root(fx2, -10, 10, args=args)
                 if lb[i] > ub[i]:
                     eta_1 = eta_m
                     break
