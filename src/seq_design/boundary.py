@@ -1,8 +1,14 @@
 """Group sequential designs using error spending functions
 
 Reference:
-    Wu, J., & Li, Y. (2020). Group sequential design for historical control trials using
-    error spending functions. Journal of biopharmaceutical statistics, 30(2), 351–363.
+    
+- Chang MN, Hwang I, Shih WJ. Group sequential designs using both type I and type II 
+error probability spending functions. Communications in Statistics - Theory Methods, 
+1998. 27:1322–1339
+- Since I could not get the access to the literature above, got indirect reference from:
+    - Wu, J., & Li, Y. (2020). Group sequential design for historical control trials 
+    using error spending functions. Journal of biopharmaceutical statistics, 30(2), 
+    351–363.
 """
 from dataclasses import dataclass
 import pandas as pd
