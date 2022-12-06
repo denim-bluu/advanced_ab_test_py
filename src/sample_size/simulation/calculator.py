@@ -78,23 +78,19 @@ def multiple_proportions_mc_power_analysis(
     alternative: str = ALTERNATIVE,
     n_simulation: int = N_SIMULATION,
 ) -> tuple[int | float, np.number | float, np.number]:
-    """Monte Carlo simulation for power analysis of multiple proportion tests
+    """Monte Carlo simulation for power analysis for multiple tests
 
     Args:
-        sample_size (int | float): Estimated sample size
-        base_rate (np.number): Base conversion rate
-        n_variants (int): Number of variants
-        relative_effect (float): Size of the relative effect
-        alpha (float, optional): Type I error rate. Defaults to ALPHA.
-        alternative (str, optional): Side of the test. Defaults to ALTERNATIVE.
-        n_simulation (int, optional): Number of simulation. Defaults to N_SIMULATION.
-
-    Raises:
-        ValueError: If Alpha is not bounded between 0 and 1
+        sample_size (int): Size of the sample
+        sample_mean (float): Sample mean
+        sample_sd (float): Sample standard deviation
+        relative_effect (float): Minimum relative effect
+        alpha (float, optional): Type I error rate. Defaults to 0.05.
+        alternative (str, optional): Test type. Defaults to "two-sided".
+        n_simulation (int, optional): Number of simulations. Defaults to 2000.
 
     Returns:
-        tuple[int | float, np.number | float, np.number]: Sample size and stastical
-            power for either test is significant or all tests are significant
+        tuple[int, np.number]: Sample size and corresponding statistical power
     """
     if (0.0 > alpha) | (alpha > 1):
         raise ValueError(f"alpha has to be within 1 and 0")
