@@ -11,7 +11,7 @@ error probability spending functions. Communications in Statistics - Theory Meth
     351–363.
 """
 from dataclasses import dataclass
-import time
+
 from matplotlib import pyplot as plt
 from src.base_fields import *
 
@@ -76,19 +76,18 @@ def sequential_design(
     eta_m = (eta_0 + eta_1) / 2
 
     ts = np.linspace(1, k, num=k) / k
-    tij = np.insert(ts, 0, 0.0, axis=0)
-    alpha1 = alpha_spend_func(ts, alpha=alpha)
-    beta_1 = alpha_spend_func(ts, alpha=beta)
+    alpha_1 = spend.spend_function(alpha_spend_func(ts, alpha=alpha))
+    beta_1 = spend.spend_function(alpha_spend_func(ts, alpha=beta))
 
-    covmat = np.empty(shape=(k + 1, k + 1))
-    for i in range(1, k + 1):
-        for j in range(1, k + 1):
-            covmat[i, j] = np.minimum(tij[i], tij[j]) / np.sqrt(tij[i] * tij[j])
+    covmat = np.empty(shape=(k, k))
+    for i in range(0, k):
+        for j in range(0, k):
+            covmat[i, j] = np.minimum(ts[i], ts[j]) / np.sqrt(ts[i] * ts[j])
     ub, lb = np.zeros(k), np.zeros(k)
-    ub[0] = st.norm.ppf(1 - alpha1[0])
+    ub[0] = st.norm.ppf(1 - alpha_1[0])
     for i in range(1, k):
         ubi = ub[0:i]
-        args = (ubi, covmat[1 : (i + 2), 1 : (i + 2)], alpha1[i] - alpha1[i - 1])
+        args = (ubi, covmat[0 : (i + 1), 0 : (i + 1)], alpha_1[i])
         ub[i] = root(fx1, -10, 10, args=args)
     while True:
         eta_m = (eta_0 + eta_1) / 2
@@ -98,8 +97,8 @@ def sequential_design(
         else:
             for i in range(1, k):
                 lbi = lb[0:i]
-                cov = covmat[1 : (i + 2), 1 : (i + 2)]
-                args = (lbi, eta_m, ts, cov, beta_1[i] - beta_1[i - 1])
+                cov = covmat[0 : (i + 1), 0 : (i + 1)]
+                args = (lbi, eta_m, ts, cov, beta_1[i])
                 lb[i] = root(fx2, -10, 10, args=args)
                 if lb[i] > ub[i]:
                     eta_1 = eta_m
@@ -112,7 +111,7 @@ def sequential_design(
                     upper = np.append(ub[0:i], [lb[i]], axis=0)
                     lower = np.append(lb[0:i], [-np.inf], axis=0)
                     lmu = eta_m * np.sqrt(ts[0 : i + 1])
-                    covm = covmat[1 : (i + 2), 1 : (i + 2)]
+                    covm = covmat[0 : (i + 1), 0 : (i + 1)]
                     with suppress_stdout():
                         pv[i] = mvnormcdf(upper=upper, lower=lower, mu=lmu, cov=covm)
                 beta_k = sum(pv)
