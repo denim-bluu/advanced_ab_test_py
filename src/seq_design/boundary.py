@@ -5,6 +5,7 @@ Reference:
     error spending functions. Journal of biopharmaceutical statistics, 30(2), 351–363.
 """
 from dataclasses import dataclass
+from src.base_fields import *
 
 import numpy as np
 from numpy import typing as npt
@@ -20,7 +21,7 @@ from util.stdout import blockprint
 class SDBoundary:
     upper: npt.NDArray[np.number]
     lower: npt.NDArray[np.number]
-    etam: float
+    eta_m: float
     ts: npt.NDArray[np.number]
 
 
@@ -35,19 +36,22 @@ def fx1(x, ub, covm, tprob) -> float:
     return tprob - pmv
 
 
-def fx2(x, lb, etam, ts, covm, tprob) -> float:
+def fx2(x, lb, eta_m, ts, covm, tprob) -> float:
     kn = np.shape(lb)
     ub = np.repeat(np.inf, kn)
     upper = np.append(ub, [x], axis=0)
     lower = np.append(lb, [-np.inf], axis=0)
-    lmu = etam * np.sqrt(ts[0 : kn[0] + 1])
+    lmu = eta_m * np.sqrt(ts[0 : kn[0] + 1])
     blockprint()
     pmv = mvnormcdf(upper=upper, lower=lower, mu=lmu, cov=covm)
     return tprob - pmv
 
 
 def find_bound(
-    d2, d1, alpha, beta, k, option: spend.SpendOptions = spend.SpendOptions.OBF
+    alpha: float = ALPHA,
+    beta: float = BETA,
+    k: int = N_STAGE,
+    option: spend.SpendOptions = spend.SpendOptions.OBF,
 ) -> SDBoundary:
     if option == spend.SpendOptions.OBF:
         alpha_spend_func = spend.obrien_fleming
@@ -60,19 +64,14 @@ def find_bound(
     else:
         raise ValueError(f"Alpha Spend Function: {option} is not supported.")
 
-    eta0 = st.norm.ppf(1 - alpha) + st.norm.ppf(1 - beta)
-    eta1 = np.sqrt(2) * eta0
-    etam = (eta0 + eta1) / 2
-
-    ## This is for HCT
-    # ti =np.linspace(1, k, num=k) / k
-    # r = d2 / d1
-    # ts = (1 + r) * ti / (1 + r * ti)
+    eta_0 = st.norm.ppf(1 - alpha) + st.norm.ppf(1 - beta)
+    eta_1 = np.sqrt(2) * eta_0
+    eta_m = (eta_0 + eta_1) / 2
 
     ts = np.linspace(1, k, num=k) / k
     tij = np.insert(ts, 0, 0.0, axis=0)
     alpha1 = alpha_spend_func(ts, alpha=alpha)
-    beta1 = alpha_spend_func(ts, alpha=beta)
+    beta_1 = alpha_spend_func(ts, alpha=beta)
 
     covmat = np.empty(shape=(k + 1, k + 1))
     for i in range(1, k + 1):
@@ -88,75 +87,65 @@ def find_bound(
     while True:
         ctn += 1
         flag = 0
-        etam = (eta0 + eta1) / 2
-        lb[0] = st.norm.ppf(beta1[0]) + etam * np.sqrt(ts[0])
+        eta_m = (eta_0 + eta_1) / 2
+        lb[0] = st.norm.ppf(beta_1[0]) + eta_m * np.sqrt(ts[0])
         if lb[0] > ub[0]:
-            eta1 = etam
+            eta_1 = eta_m
         else:
             for i in range(1, k):
                 lbi = lb[0:i]
                 cov = covmat[1 : (i + 2), 1 : (i + 2)]
-                args = (lbi, etam, ts, cov, beta1[i] - beta1[i - 1])
+                args = (lbi, eta_m, ts, cov, beta_1[i] - beta_1[i - 1])
                 lb[i] = root(fx2, -10, 10, args=args)
                 if lb[i] > ub[i]:
                     flag = 1
                     break
             if flag == 1:
-                eta1 = etam
+                eta_1 = eta_m
             else:
                 lb[k - 1] = ub[k - 1]
                 pv = np.empty_like(lb)
-                pv[0] = st.norm.cdf(lb[0], loc=etam * np.sqrt(ts[0]))
+                pv[0] = st.norm.cdf(lb[0], loc=eta_m * np.sqrt(ts[0]))
                 for i in range(1, k):
                     upper = np.append(ub[0:i], [lb[i]], axis=0)
                     lower = np.append(lb[0:i], [-np.inf], axis=0)
-                    lmu = etam * np.sqrt(ts[0 : i + 1])
+                    lmu = eta_m * np.sqrt(ts[0 : i + 1])
                     covm = covmat[1 : (i + 2), 1 : (i + 2)]
                     blockprint()
                     pv[i] = mvnormcdf(upper=upper, lower=lower, mu=lmu, cov=covm)
-                betak = sum(pv)
-                if betak < beta:
-                    eta1 = etam
+                beta_k = sum(pv)
+                if beta_k < beta:
+                    eta_1 = eta_m
                 else:
-                    eta0 = etam
-                if abs(beta - betak) < 1e-05:
+                    eta_0 = eta_m
+                if abs(beta - beta_k) < 1e-05:
                     flag = 2
         if flag == 2:
             break
 
-    return SDBoundary(upper=ub, lower=lb, etam=etam, ts=ts)
+    return SDBoundary(upper=ub, lower=lb, eta_m=eta_m, ts=ts)
 
 
 def sequential_design(
     k: int,
-    alpha: float = 0.05,
-    beta: float = 0.1,
-    delta: int | float = 1 / 1.75,
-    d1: float | int = 65,
+    alpha: float = ALPHA,
+    beta: float = BETA,
     option: spend.SpendOptions = spend.SpendOptions.OBF,
 ) -> SDBoundary:
-    z_alpha = st.norm.ppf(1 - alpha)
-    z_power = st.norm.ppf(1 - beta)
-    temp1 = np.exp(np.sqrt(1 / d1 * (z_alpha + z_power) ** 2))
-    temp2 = np.exp(-np.sqrt(1 / d1 * (z_alpha + z_power) ** 2))
-    if (delta < temp1) & (delta > temp2):
-        raise ValueError(f"Delta must be greater than {temp1} or less than {temp2}")
-    d2start = np.ceil((np.log(delta) ** 2 / (z_alpha + z_power) ** 2 - 1 / d1) ** (-1))
-    find = find_bound(d2=d2start, d1=d1, alpha=alpha, beta=beta, k=k, option=option)
+    find = find_bound(alpha=alpha, beta=beta, k=k, option=option)
     ctn = 0
     while True:
         ctn += 1
-        d2 = np.ceil(1 / ((np.log(delta) ** 2) / (find.etam**2) - (1 / d1)))
-        find = find_bound(d2=d2, d1=d1, alpha=alpha, beta=beta, k=k, option=option)
+        find = find_bound(alpha=alpha, beta=beta, k=k, option=option)
         if ctn > 5:
             break
-    return SDBoundary(upper=find.upper, lower=find.lower, etam=find.etam, ts=find.ts)
+    return SDBoundary(upper=find.upper, lower=find.lower, eta_m=find.eta_m, ts=find.ts)
 
 
 # # Example
 # d2 = 48.0
 # d1 = 65
 # alpha = 0.05
-# beta = 0.1
+# beta_ = 0.1
 # k = 3
-# sequential_design(3, alpha=0.05, beta=0.1, delta=1 / 1.75, d1=65)
+# sequential_design(3, alpha=0.05, beta_=0.1, delta=1 / 1.75, d1=65)
