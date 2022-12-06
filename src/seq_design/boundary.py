@@ -5,6 +5,8 @@ Reference:
     error spending functions. Journal of biopharmaceutical statistics, 30(2), 351–363.
 """
 from dataclasses import dataclass
+import pandas as pd
+from matplotlib import pyplot as plt
 from src.base_fields import *
 
 import numpy as np
@@ -140,6 +142,31 @@ def sequential_design(
         if ctn > 5:
             break
     return SDBoundary(upper=find.upper, lower=find.lower, eta_m=find.eta_m, ts=find.ts)
+
+
+def vis_sequential_design(boundary: SDBoundary) -> None:
+    df = pd.DataFrame(
+        [boundary.ts, boundary.upper, boundary.lower],
+        index=[
+            "x",
+            "ub",
+            "lb",
+        ],
+    ).T
+    _, ax = plt.subplots()
+    x = df["x"]
+    ub = df["ub"]
+    lb = df["lb"]
+    ax.plot(x, ub, label="Upper Bound")
+    ax.plot(x, lb, label="Lower Bound")
+    ax.set_xlabel("Sample Proportion per stage", fontsize=14)
+    ax.set_ylabel("Z-score", fontsize=14)
+    plt.title(f"Group Sequential Method for early stopping (stage={len(x)})")
+    for index in range(len(x)):
+        ax.text(x[index], ub[index], round(ub[index], 2), size=12)
+        ax.text(x[index], lb[index], round(lb[index], 2), size=12)
+    plt.legend()
+    plt.show()
 
 
 # # Example
