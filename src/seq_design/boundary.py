@@ -1,3 +1,9 @@
+"""Group sequential designs using error spending functions
+
+Reference:
+    Wu, J., & Li, Y. (2020). Group sequential design for historical control trials using
+    error spending functions. Journal of biopharmaceutical statistics, 30(2), 351–363.
+"""
 from dataclasses import dataclass
 
 import numpy as np
@@ -54,13 +60,16 @@ def find_bound(
     else:
         raise ValueError(f"Alpha Spend Function: {option} is not supported.")
 
-    ti = np.linspace(1, k, num=k) / k
     eta0 = st.norm.ppf(1 - alpha) + st.norm.ppf(1 - beta)
     eta1 = np.sqrt(2) * eta0
     etam = (eta0 + eta1) / 2
-    r = d2 / d1
 
-    ts = (1 + r) * ti / (1 + r * ti)
+    ## This is for HCT
+    # ti =np.linspace(1, k, num=k) / k
+    # r = d2 / d1
+    # ts = (1 + r) * ti / (1 + r * ti)
+
+    ts = np.linspace(1, k, num=k) / k
     tij = np.insert(ts, 0, 0.0, axis=0)
     alpha1 = alpha_spend_func(ts, alpha=alpha)
     beta1 = alpha_spend_func(ts, alpha=beta)
@@ -134,7 +143,6 @@ def sequential_design(
         raise ValueError(f"Delta must be greater than {temp1} or less than {temp2}")
     d2start = np.ceil((np.log(delta) ** 2 / (z_alpha + z_power) ** 2 - 1 / d1) ** (-1))
     find = find_bound(d2=d2start, d1=d1, alpha=alpha, beta=beta, k=k, option=option)
-    etam = find.etam
     ctn = 0
     while True:
         ctn += 1
