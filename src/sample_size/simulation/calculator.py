@@ -1,11 +1,12 @@
 from typing import Any
 
 import numpy as np
+from numba import njit
 from scipy import stats as st
-from statsmodels.stats.proportion import proportions_ztest
 
 from src.base_fields import *
 from src.fwer import procedure
+from src.stats_func import *
 
 
 def multiple_means_mc_power_analysis(
@@ -31,26 +32,23 @@ def multiple_means_mc_power_analysis(
     Returns:
         tuple[int, np.number]: Sample size and corresponding statistical power
     """
-    if (0.0 > alpha) | (alpha > 1):
-        raise ValueError(f"alpha has to be within 1 and 0")
     n_groups = 1 + n_variants
 
     control_data = sample_data[:sample_size]
     variant_data = sample_data * relative_effect
-    significance_either = []
-    significance_all = []
+    significance_either = np.zeros(shape=n_simulation)
+    significance_all = np.zeros(shape=n_simulation)
 
-    for _ in range(n_simulation):
+    for i in range(n_simulation):
         p_vals = []
-
         # Randomly allocate the sample data to the control and variant
         indices = list(range(sample_size))
         np.random.shuffle(indices)
         idx_partitions = [sorted(indices[i::n_groups]) for i in range(n_groups)]
 
         control_sample = np.array([control_data[j] for j in idx_partitions[0]])
-        for i in range(n_variants):
-            variant_sample = np.array([variant_data[j] for j in idx_partitions[i + 1]])
+        for j in range(n_variants):
+            variant_sample = np.array([variant_data[k] for k in idx_partitions[j + 1]])
             p_vals.append(
                 st.ttest_ind(
                     control_sample,
@@ -64,14 +62,15 @@ def multiple_means_mc_power_analysis(
         tests = procedure.holm_step_down_procedure(p_vals, alpha)
 
         # Either one is significant or all
-        significance_either.append(any(tests))
-        significance_all.append(all(tests))
+        significance_either[i] = any(tests)
+        significance_all[i] = all(tests)
     return sample_size, np.mean(significance_either), np.mean(significance_all)
 
 
+@njit(parallel=True, fastmath=True)
 def multiple_proportions_mc_power_analysis(
     sample_size: int | float,
-    base_rate: np.number,
+    base_rate: float,
     n_variants: int,
     relative_effect: float,
     alpha: float = ALPHA,
@@ -92,22 +91,19 @@ def multiple_proportions_mc_power_analysis(
     Returns:
         tuple[int, np.number]: Sample size and corresponding statistical power
     """
-    if (0.0 > alpha) | (alpha > 1):
-        raise ValueError(f"alpha has to be within 1 and 0")
     n_per_variant = int(np.floor(sample_size / (n_variants + 1)))
-    significance_either = []
-    significance_all = []
+    significance_either = np.zeros(shape=n_simulation, dtype=np.bool8)
+    significance_all = np.zeros(shape=n_simulation, dtype=np.bool8)
 
-    for _ in range(n_simulation):
-        control_sample = st.binom.rvs(1, base_rate, size=n_per_variant)
-
+    for i in range(n_simulation):
         p_vals = []
         for _ in range(n_variants):
-            variant_sample = st.binom.rvs(
+            control_sample = np.random.binomial(1, base_rate, size=n_per_variant)
+            variant_sample = np.random.binomial(
                 1, base_rate * relative_effect, size=n_per_variant
             )
             p_vals.append(
-                proportions_ztest(
+                two_proportions_ztest(
                     count=[np.sum(variant_sample), np.sum(control_sample)],
                     nobs=[n_per_variant, n_per_variant],
                     alternative=alternative,
@@ -118,8 +114,8 @@ def multiple_proportions_mc_power_analysis(
         tests = procedure.holm_step_down_procedure(p_vals, alpha)
 
         # Either one is significant or all
-        significance_either.append(any(tests))
-        significance_all.append(all(tests))
+        significance_either[i] = np.any(tests)
+        significance_all[i] = np.all(tests)
     return sample_size, np.mean(significance_either), np.mean(significance_all)
 
 
@@ -174,6 +170,7 @@ def two_means_mc_power_analysis(
     return sample_size, np.mean(significance_results)
 
 
+@njit(parallel=True, fastmath=True)
 def two_proportions_mc_power_analysis(
     sample_size: int | float,
     base_conversion_rate: float,
@@ -182,29 +179,22 @@ def two_proportions_mc_power_analysis(
     alternative: str = ALTERNATIVE,
     n_simulation: int = N_SIMULATION,
 ) -> tuple[int | float, np.number]:
-    if (0.0 > base_conversion_rate) | (base_conversion_rate > 1):
-        raise ValueError(f"Base Conversion Rate has to be within 1 and 0")
-
-    if (0.0 > alpha) | (alpha > 1):
-        raise ValueError(f"alpha has to be within 1 and 0")
-
     sample_per_variant = int(np.floor(sample_size / 2))
-    significance_results = []
-    for _ in range(n_simulation):
+
+    significance_results = np.zeros(shape=n_simulation, dtype=np.bool8)
+    for i in range(n_simulation):
         # # Randomly generate binomial data for variant and control with different
         # success probabilities
-        control_sample = np.array(
-            st.binom.rvs(1, base_conversion_rate, size=sample_per_variant)
+        control_sample = np.random.binomial(
+            1, base_conversion_rate, size=sample_per_variant
         )
-        variant_sample = np.array(
-            st.binom.rvs(
-                1, base_conversion_rate * relative_effect, size=sample_per_variant
-            )
+        variant_sample = np.random.binomial(
+            1, base_conversion_rate * relative_effect, size=sample_per_variant
         )
-        test_result = proportions_ztest(
+        test_result = two_proportions_ztest(
             count=[sum(variant_sample), sum(control_sample)],
             nobs=[sample_per_variant, sample_per_variant],
             alternative=alternative,
         )
-        significance_results.append(test_result[1] <= alpha)  # Test for significance
+        significance_results[i] = test_result[1] <= alpha  # Test for significance
     return sample_size, np.mean(significance_results)
