@@ -3,7 +3,7 @@ import math
 from scipy import stats as st
 from typing import Sequence
 from numpy import typing as npt
-from numba import njit
+import numba as nb
 
 
 def shift_array(
@@ -92,7 +92,7 @@ def ci_two_mean_difference(
     )
 
 
-@njit(fastmath=True)
+@nb.njit(fastmath=True)
 def erf(x):
     # save the sign of x
     sign = 1 if x >= 0 else -1
@@ -112,17 +112,17 @@ def erf(x):
     return sign * y  # erf(-x) = -erf(x)
 
 
-@njit(fastmath=True)
+@nb.njit(fastmath=True)
 def norm_cdf(x):
     return 0.5 * (1 + erf(x / math.sqrt(2)))
 
 
-@njit(fastmath=True)
+@nb.njit(fastmath=True)
 def norm_pdf(x):
     return math.exp(-(x**2) / 2) / math.sqrt(2 * math.pi)
 
 
-@njit(fastmath=True)
+@nb.njit(fastmath=True)
 def inverse_normal_cdf(
     p: float, mu: float = 0, sigma: float = 1, tol: float = 1e-05
 ) -> float:
@@ -143,22 +143,13 @@ def inverse_normal_cdf(
     return round(midz, 2)
 
 
-@njit(fastmath=True)
-def t_pdf(x, df):
-    return math.gamma((df + 1) / 2) / (
-        math.sqrt(math.pi * df)
-        * math.gamma(df / 2)
-        * (1 + x**2 / df) ** ((df + 1) / 2)
-    )
-
-
-@njit(fastmath=True)
+@nb.njit(fastmath=True)
 def unbiased_variance(x: npt.NDArray[np.number]) -> float:
     m = sum(x) / len(x)
     return sum([(xi - m) ** 2 for xi in x]) / (len(x) - 1)
 
 
-@njit(fastmath=True)
+@nb.njit(fastmath=True)
 def independent_ttest(x1, x2):
     # calculate means
     x1_bar, x2_bar = np.mean(x1), np.mean(x2)
@@ -175,10 +166,10 @@ def independent_ttest(x1, x2):
 
     # calculate t statistics
     tstat = (x1_bar - x2_bar) / std_error
-    return tstat, 2 * (1 - st.t.cdf(tstat, dof1 + dof2, 0, 1))
+    return tstat, 2 * (1 - t_cdf(tstat, dof1 + dof2))
 
 
-@njit(fastmath=True)
+@nb.njit(fastmath=True)
 def factorial(n):
     x = 1
     for i in range(1, n + 1):
@@ -186,19 +177,23 @@ def factorial(n):
     return x
 
 
-@njit(fastmath=True)
+@nb.njit(fastmath=True)
 def combination(n, k):
     return factorial(n) / (factorial(k) * factorial(n - k))
 
 
-@njit(fastmath=True)
+@nb.njit(fastmath=True)
 def binompmf(k, n, p):
     return combination(n, k) * (p**k) * ((1 - p) ** (n - k))
 
 
-@njit(fastmath=True)
+@nb.njit(fastmath=True)
 def two_proportions_ztest(
-    count, nobs, value=0.0, alternative="two-sided", prop_var=False
+    count: npt.NDArray[np.number],
+    nobs: npt.NDArray[np.number],
+    value: float = 0.0,
+    alternative: str = "two-sided",
+    prop_var: bool = False,
 ):
     count = np.asarray(count)
     nobs = np.asarray(nobs)
@@ -217,31 +212,34 @@ def two_proportions_ztest(
     return _zstat_generic2(diff, std_diff, alternative)
 
 
-@njit(fastmath=True)
-def one_proportions_ztest(
-    count, nobs, value=0.0, alternative="two-sided", prop_var=False
+@nb.njit(fastmath=True)
+def ztest(
+    x1: npt.NDArray[np.number],
+    x2: None | npt.NDArray[np.number] = None,
+    value: float | int = 0,
+    alternative: str = "two-sided",
+    ddof: float = 1.0,
 ):
-    count = np.asarray(count)
-    nobs = np.asarray(nobs) * np.ones_like(count)
+    nobs1 = x1.shape[0]
+    x1_mean = x1.mean()
+    x1_var = x1.var()
+    if x2 is not None:
+        nobs2 = x2.shape[0]
+        x2_mean = x2.mean()
+        x2_var = x2.var()
+        var_pooled = nobs1 * x1_var + nobs2 * x2_var
+        var_pooled /= nobs1 + nobs2 - 2 * ddof
+        var_pooled *= 1.0 / nobs1 + 1.0 / nobs2
+    else:
+        var_pooled = x1_var / (nobs1 - ddof)
+        x2_mean = 0
 
-    prop = count / nobs
-    if value == 0.0:
-        raise ValueError("value must be provided for a 1-sample test")
-
-    diff = prop - value
-
-    p_pooled = np.sum(count) * 1.0 / np.sum(nobs)
-
-    nobs_fact = np.sum(1.0 / nobs)
-    if prop_var:
-        p_pooled = prop_var
-    var_ = np.float64(p_pooled) * np.float64(1 - p_pooled) * np.float64(nobs_fact)
-    std_diff = np.sqrt(var_)
-    return _zstat_generic2(diff, std_diff, alternative)
+    std_diff = np.sqrt(var_pooled)
+    return _zstat_generic(x1_mean, x2_mean, std_diff, alternative, diff=value)
 
 
-@njit(fastmath=True)
-def _zstat_generic2(value, std, alternative):
+@nb.njit(fastmath=True)
+def _zstat_generic2(value: float | int, std: float, alternative: str):
     zstat = value / std
     if alternative in ["two-sided", "2-sided", "2s"]:
         pvalue = (1 - norm_cdf(np.abs(zstat))) * 2
@@ -252,3 +250,68 @@ def _zstat_generic2(value, std, alternative):
     else:
         raise ValueError("invalid alternative")
     return zstat, pvalue
+
+
+@nb.njit(fastmath=True)
+def _zstat_generic(
+    value1: float, value2: float, std_diff: float, alternative, diff: float | int = 0
+):
+    zstat = (value1 - value2 - diff) / std_diff
+    if alternative in ["two-sided", "2-sided", "2s"]:
+        pvalue = (1 - norm_cdf(np.abs(zstat))) * 2
+    elif alternative in ["larger", "l"]:
+        pvalue = 1 - norm_cdf(zstat)
+    elif alternative in ["smaller", "s"]:
+        pvalue = norm_cdf(zstat)
+    else:
+        raise ValueError("invalid alternative")
+    return zstat, pvalue
+
+
+@nb.njit(fastmath=True)
+def quad_trap(f, xmin, xmax, args=(), n=100):
+    h = (xmax - xmin) / n
+    integral = h * (f(xmin, args) + f(xmax, args)) / 2
+    for k in range(n):
+        xk = (xmax - xmin) * k / n + xmin
+        integral = integral + h * f(xk, args)
+    return integral
+
+
+@nb.njit(fastmath=True)
+def quad_trap_alt(f, xmin, xmax, npoints=10):
+    area = 0
+    x = np.linspace(xmin, xmax, npoints)
+    n = len(x)
+    dx = x[1] - x[0]
+    for k in range(1, n):
+        area += (f(x[k - 1]) + f(x[k])) * dx / 2
+    return area
+
+
+# TODO: T-stats function with big dof return NaN due to the Gamma function.
+# Need to find the approximation? alternative?
+@nb.njit(nb.float64(nb.float64, nb.float64), fastmath=True)
+def t_cdf_integrand(x, df):
+    return (
+        math.gamma((df + 1) / 2)
+        / math.gamma(df / 2)
+        * 1
+        / math.sqrt(df * math.pi)
+        * 1
+        / (1 + x**2 / df) ** ((df + 1) / 2)
+    )
+
+
+@nb.njit(nb.float64(nb.float64, nb.float64), fastmath=True)
+def t_cdf(x, df):
+    return quad_trap(t_cdf_integrand, -10, x, args=(df))
+
+
+@nb.njit(fastmath=True)
+def t_pdf(x, df):
+    return math.gamma((df + 1) / 2) / (
+        math.sqrt(math.pi * df)
+        * math.gamma(df / 2)
+        * (1 + x**2 / df) ** ((df + 1) / 2)
+    )
