@@ -13,6 +13,7 @@ error probability spending functions. Communications in Statistics - Theory Meth
 from dataclasses import dataclass
 
 from matplotlib import pyplot as plt
+from matplotlib.figure import Figure
 from src.base_fields import *
 
 import numpy as np
@@ -106,7 +107,7 @@ def sequential_design(
                     flag = 1
                     break
             if flag == 1:
-                    eta_1 = eta_m
+                eta_1 = eta_m
             else:
                 lb[k - 1] = ub[k - 1]
                 pv = np.empty_like(lb)
@@ -127,14 +128,14 @@ def sequential_design(
                     flag2 = 1
                     break
         if flag2 == 1:
-                    break
+            break
 
     return SDBoundary(upper=ub, lower=lb, ts=ts)
 
 
-def vis_sequential_design(boundary: SDBoundary) -> None:
+def vis_sequential_design(boundary: SDBoundary) -> tuple[Figure, plt.Axes]:
     x, ub, lb = boundary.ts, boundary.upper, boundary.lower
-    _, ax = plt.subplots()
+    fig, ax = plt.subplots()
     ax.plot(x, ub, label="Upper Bound")
     ax.plot(x, lb, label="Lower Bound")
     ax.set_xlabel("Sample / Information Proportion", fontsize=14)
@@ -144,4 +145,4 @@ def vis_sequential_design(boundary: SDBoundary) -> None:
         ax.text(x[index], ub[index], round(ub[index], 2), size=12)
         ax.text(x[index], lb[index], round(lb[index], 2), size=12)
     plt.legend()
-    plt.show()
+    return fig, ax
