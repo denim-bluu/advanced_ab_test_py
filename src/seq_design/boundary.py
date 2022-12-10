@@ -89,7 +89,9 @@ def sequential_design(
         ubi = ub[0:i]
         args = (ubi, covmat[0 : (i + 1), 0 : (i + 1)], alpha_1[i])
         ub[i] = root(fx1, -10, 10, args=args)
+    flag2 = 0
     while True:
+        flag = 0
         eta_m = (eta_0 + eta_1) / 2
         lb[0] = st.norm.ppf(beta_1[0]) + eta_m * np.sqrt(ts[0])
         if lb[0] > ub[0]:
@@ -101,8 +103,10 @@ def sequential_design(
                 args = (lbi, eta_m, ts, cov, beta_1[i])
                 lb[i] = root(fx2, -10, 10, args=args)
                 if lb[i] > ub[i]:
-                    eta_1 = eta_m
+                    flag = 1
                     break
+            if flag == 1:
+                    eta_1 = eta_m
             else:
                 lb[k - 1] = ub[k - 1]
                 pv = np.empty_like(lb)
@@ -120,6 +124,9 @@ def sequential_design(
                 else:
                     eta_0 = eta_m
                 if abs(beta - beta_k) < 1e-05:
+                    flag2 = 1
+                    break
+        if flag2 == 1:
                     break
 
     return SDBoundary(upper=ub, lower=lb, ts=ts)
