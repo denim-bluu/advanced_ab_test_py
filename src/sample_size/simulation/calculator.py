@@ -104,8 +104,8 @@ def multiple_proportions_mc_power_analysis(
             )
             p_vals.append(
                 two_proportions_ztest(
-                    count=[np.sum(variant_sample), np.sum(control_sample)],
-                    nobs=[n_per_variant, n_per_variant],
+                    count=np.array([np.sum(variant_sample), np.sum(control_sample)]),
+                    nobs=np.array([n_per_variant, n_per_variant]),
                     alternative=alternative,
                 )[1]
             )
@@ -192,8 +192,8 @@ def two_proportions_mc_power_analysis(
             1, base_conversion_rate * relative_effect, size=sample_per_variant
         )
         test_result = two_proportions_ztest(
-            count=[sum(variant_sample), sum(control_sample)],
-            nobs=[sample_per_variant, sample_per_variant],
+            count=np.array([sum(variant_sample), sum(control_sample)]),
+            nobs=np.array([sample_per_variant, sample_per_variant]),
             alternative=alternative,
         )
         significance_results[i] = test_result[1] <= alpha  # Test for significance
