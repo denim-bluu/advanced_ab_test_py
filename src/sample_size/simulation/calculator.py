@@ -1,22 +1,78 @@
+from typing import Any
+
 import numpy as np
+from numba import njit
 from scipy import stats as st
-from statsmodels.stats.proportion import proportions_ztest
+
 from src.base_fields import *
-from dataclasses import dataclass
-
-# TODO: Introduce the function for multiple tests of proportions
-
-
-@dataclass
-class MeanPowerAnalysisInput:
-    sample_mean: float
-    sample_sd: float
-    relative_effect: float
+from src.fwer import procedure
+from src.stats_func import *
 
 
 def multiple_means_mc_power_analysis(
+    sample_size: int,
+    sample_data: np.ndarray[float, Any],
+    n_variants: int,
+    relative_effect: float,
+    alpha: float = ALPHA,
+    alternative: str = ALTERNATIVE,
+    n_simulation: int = N_SIMULATION,
+) -> tuple[int | float, np.number | float, np.number]:
+    """Monte Carlo simulation for power analysis for multiple tests
+
+    Args:
+        sample_data (int): Example of the population sample
+        sample_size (int): Size of the sample
+        n_variants (int): Number of variants
+        relative_effect (float): Minimum relative effect
+        alpha (float, optional): Type I error rate. Defaults to 0.05.
+        alternative (str, optional): Test type. Defaults to "two-sided".
+        n_simulation (int, optional): Number of simulations. Defaults to 2000.
+
+    Returns:
+        tuple[int, np.number]: Sample size and corresponding statistical power
+    """
+    n_groups = 1 + n_variants
+
+    control_data = sample_data[:sample_size]
+    variant_data = sample_data * relative_effect
+    significance_either = np.zeros(shape=n_simulation)
+    significance_all = np.zeros(shape=n_simulation)
+
+    for i in range(n_simulation):
+        p_vals = []
+        # Randomly allocate the sample data to the control and variant
+        indices = list(range(sample_size))
+        np.random.shuffle(indices)
+        idx_partitions = [sorted(indices[i::n_groups]) for i in range(n_groups)]
+
+        control_sample = np.array([control_data[j] for j in idx_partitions[0]])
+        for j in range(n_variants):
+            variant_sample = np.array([variant_data[k] for k in idx_partitions[j + 1]])
+            p_vals.append(
+                st.ttest_ind(
+                    control_sample,
+                    variant_sample,
+                    alternative=alternative,
+                    equal_var=False,
+                )[1]
+            )
+
+        # Hypothesis testing
+        tests = procedure.holm_step_down_procedure(p_vals, alpha)
+
+        # Either one is significant or all
+        significance_either[i] = any(tests)
+        significance_all[i] = all(tests)
+    return sample_size, np.mean(significance_either), np.mean(significance_all)
+
+
+@njit(parallel=True, fastmath=True)
+def multiple_proportions_mc_power_analysis(
     sample_size: int | float,
-    analysis_inputs: list[MeanPowerAnalysisInput],
+    base_rate: float,
+    n_variants: int,
+    relative_effect: float,
     alpha: float = ALPHA,
     alternative: str = ALTERNATIVE,
     n_simulation: int = N_SIMULATION,
@@ -35,69 +91,31 @@ def multiple_means_mc_power_analysis(
     Returns:
         tuple[int, np.number]: Sample size and corresponding statistical power
     """
-    if (0.0 > alpha) | (alpha > 1):
-        raise ValueError(f"alpha has to be within 1 and 0")
+    n_per_variant = int(np.floor(sample_size / (n_variants + 1)))
+    significance_either = np.zeros(shape=n_simulation, dtype=np.bool8)
+    significance_all = np.zeros(shape=n_simulation, dtype=np.bool8)
 
-    control_data_ls = []
-    variant_data_ls = []
-
-    for inp in analysis_inputs:
-        control_data = np.asarray(
-            st.norm.rvs(loc=inp.sample_mean, scale=inp.sample_sd, size=sample_size)
-        )
-        control_data_ls.append(control_data)
-
-        # Multiply the control data by the relative effect, this will shift the distribution
-        # of the variant left or right depending on the direction of the relative effect
-        variant_data = control_data * inp.relative_effect
-        variant_data_ls.append(variant_data)
-
-    significance_either = []
-    significance_all = []
-
-    for _ in range(n_simulation):
-        # Randomly allocate the sample data to the control and variant
-        rv = st.binom.rvs(1, 0.5, size=sample_size)
-        test_results = []
-        for control, variant in zip(control_data_ls, variant_data_ls):
-            control_sample = control[rv == True]
-            variant_sample = variant[rv == False]
-            test_results.append(
-                st.ttest_ind(
-                    control_sample,
-                    variant_sample,
+    for i in range(n_simulation):
+        p_vals = []
+        for _ in range(n_variants):
+            control_sample = np.random.binomial(1, base_rate, size=n_per_variant)
+            variant_sample = np.random.binomial(
+                1, base_rate * relative_effect, size=n_per_variant
+            )
+            p_vals.append(
+                two_proportions_ztest(
+                    count=np.array([np.sum(variant_sample), np.sum(control_sample)]),
+                    nobs=np.array([n_per_variant, n_per_variant]),
                     alternative=alternative,
-                    equal_var=False,
                 )[1]
             )
-        # Multiple test correction
-        # Use Holm correction
-        # Due to performance issues on statsmodels.stats.multitest.multipletests,
-        # Retrieved a snippet from the package
-        n_pvals = len(test_results)
-        sortind = np.argsort(test_results)
-        notreject = test_results > alpha / np.arange(len(test_results), 0, -1)
-        nr_index = np.nonzero(notreject)[0]
-        if nr_index.size == 0:
-            # nonreject is empty, all rejected
-            notrejectmin = len(test_results)
-        else:
-            notrejectmin = np.min(nr_index)
-        notreject[notrejectmin:] = True
-        reject = ~notreject
-        pvals_corrected_raw = test_results * np.arange(n_pvals, 0, -1)
-        pvals_corrected = np.maximum.accumulate(pvals_corrected_raw)
-        if pvals_corrected is not None:  # not necessary anymore
-            pvals_corrected[pvals_corrected > 1] = 1
 
-        pvals_corrected_ = np.empty_like(pvals_corrected)
-        pvals_corrected_[sortind] = pvals_corrected
-        reject_ = np.empty_like(reject)
-        reject_[sortind] = reject
+        # Hypothesis testing
+        tests = procedure.holm_step_down_procedure(p_vals, alpha)
 
         # Either one is significant or all
-        significance_either.append(any(reject_))
-        significance_all.append(all(reject_))
+        significance_either[i] = np.any(tests)
+        significance_all[i] = np.all(tests)
     return sample_size, np.mean(significance_either), np.mean(significance_all)
 
 
@@ -152,6 +170,7 @@ def two_means_mc_power_analysis(
     return sample_size, np.mean(significance_results)
 
 
+@njit(parallel=True, fastmath=True)
 def two_proportions_mc_power_analysis(
     sample_size: int | float,
     base_conversion_rate: float,
@@ -160,29 +179,22 @@ def two_proportions_mc_power_analysis(
     alternative: str = ALTERNATIVE,
     n_simulation: int = N_SIMULATION,
 ) -> tuple[int | float, np.number]:
-    if (0.0 > base_conversion_rate) | (base_conversion_rate > 1):
-        raise ValueError(f"Base Conversion Rate has to be within 1 and 0")
-
-    if (0.0 > alpha) | (alpha > 1):
-        raise ValueError(f"alpha has to be within 1 and 0")
-
     sample_per_variant = int(np.floor(sample_size / 2))
-    significance_results = []
-    for _ in range(n_simulation):
+
+    significance_results = np.zeros(shape=n_simulation, dtype=np.bool8)
+    for i in range(n_simulation):
         # # Randomly generate binomial data for variant and control with different
         # success probabilities
-        control_sample = np.array(
-            st.binom.rvs(1, base_conversion_rate, size=sample_per_variant)
+        control_sample = np.random.binomial(
+            1, base_conversion_rate, size=sample_per_variant
         )
-        variant_sample = np.array(
-            st.binom.rvs(
-                1, base_conversion_rate * relative_effect, size=sample_per_variant
-            )
+        variant_sample = np.random.binomial(
+            1, base_conversion_rate * relative_effect, size=sample_per_variant
         )
-        test_result = proportions_ztest(
-            count=[sum(variant_sample), sum(control_sample)],
-            nobs=[sample_per_variant, sample_per_variant],
+        test_result = two_proportions_ztest(
+            count=np.array([sum(variant_sample), sum(control_sample)]),
+            nobs=np.array([sample_per_variant, sample_per_variant]),
             alternative=alternative,
         )
-        significance_results.append(test_result[1] <= alpha)  # Test for significance
+        significance_results[i] = test_result[1] <= alpha  # Test for significance
     return sample_size, np.mean(significance_results)

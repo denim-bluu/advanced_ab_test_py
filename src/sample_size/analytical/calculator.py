@@ -56,6 +56,7 @@ def two_proportion_sample_size_calculate(
     ratio: float,
     alpha: float = ALPHA,
     power: float = 1 - BETA,
+    alternative: str = ALTERNATIVE,
 ) -> float:
     if (0.0 > alpha) | (alpha > 1):
         raise ValueError(f"alpha has to be within 1 and 0")
@@ -64,9 +65,11 @@ def two_proportion_sample_size_calculate(
     if (0.0 > ratio) | (ratio > 1):
         raise ValueError(f"ratio has to be within 1 and 0")
 
-    z_alpha = st.norm.ppf(alpha / 2)
+    if alternative == "two-sided":
+        alpha = alpha / 2
+    z_alpha = st.norm.ppf(alpha)
     z_beta = st.norm.ppf(1 - power)
-    treatment_rate = base_rate * (1 + relative_change)
+    treatment_rate = base_rate * relative_change
     avg_rate = ((ratio * treatment_rate) + base_rate) / (1 + ratio)
 
     return (
