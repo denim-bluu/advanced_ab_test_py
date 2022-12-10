@@ -8,21 +8,23 @@ from numba import njit
 
 @njit
 def bonferroni_procedure(
-    p_vals: list[float], alpha: float = 0.05
+    p_vals: npt.NDArray[np.number], alpha: float = 0.05
 ) -> npt.NDArray[np.bool_]:
     _p_vals, m = np.asarray(p_vals), len(p_vals)
     return _p_vals < ap.bonferroni_alpha(m, alpha)
 
 
 @njit
-def sidak_procedure(p_vals: list[float], alpha: float = 0.05) -> npt.NDArray[np.bool_]:
+def sidak_procedure(
+    p_vals: npt.NDArray[np.number], alpha: float = 0.05
+) -> npt.NDArray[np.bool_]:
     p, m = np.asarray(p_vals), len(p_vals)
     return p < ap.sidak_alpha(m, alpha)
 
 
 @njit
 def holm_step_down_procedure(
-    p_vals: list[float], alpha: float = 0.05
+    p_vals: npt.NDArray[np.number], alpha: float = 0.05
 ) -> npt.NDArray[np.bool_]:
     _p_vals, m = np.asarray(p_vals), len(p_vals)
     idx = _p_vals.argsort()
@@ -35,7 +37,7 @@ def holm_step_down_procedure(
 
 @njit
 def hochberg_step_up_procedure(
-    p_vals: list[float], alpha: float = 0.05
+    p_vals: npt.NDArray[np.number], alpha: float = 0.05
 ) -> npt.NDArray[np.bool_]:
     _p_vals, m = np.asarray(p_vals), len(p_vals)
     idx = _p_vals.argsort()
