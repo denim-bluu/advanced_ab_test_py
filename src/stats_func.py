@@ -1,9 +1,11 @@
-import numpy as np
 import math
-from scipy import stats as st
-from typing import Sequence
-from numpy import typing as npt
+import warnings
+from typing import Any, Sequence
+
 import numba as nb
+import numpy as np
+from numpy import typing as npt
+from scipy import stats as st
 
 
 def shift_array(
@@ -113,12 +115,12 @@ def erf(x):
 
 
 @nb.njit(fastmath=True)
-def norm_cdf(x):
+def norm_cdf(x: float) -> float:
     return 0.5 * (1 + erf(x / math.sqrt(2)))
 
 
 @nb.njit(fastmath=True)
-def norm_pdf(x):
+def norm_pdf(x: float) -> float:
     return math.exp(-(x**2) / 2) / math.sqrt(2 * math.pi)
 
 
@@ -150,7 +152,10 @@ def unbiased_variance(x: npt.NDArray[np.number]) -> float:
 
 
 @nb.njit(fastmath=True)
-def independent_ttest(x1, x2):
+def independent_ttest(
+    x1: npt.NDArray[np.float_], x2: npt.NDArray[np.float_]
+) -> tuple[float, float]:
+    """Calculate T-test for the means of two independent samples"""
     # calculate means
     x1_bar, x2_bar = np.mean(x1), np.mean(x2)
     n1, n2 = len(x1), len(x2)
@@ -170,7 +175,7 @@ def independent_ttest(x1, x2):
 
 
 @nb.njit(fastmath=True)
-def factorial(n):
+def factorial(n: int) -> int:
     x = 1
     for i in range(1, n + 1):
         x *= i
@@ -178,7 +183,7 @@ def factorial(n):
 
 
 @nb.njit(fastmath=True)
-def combination(n, k):
+def combination(n: int, k: int) -> float:
     return factorial(n) / (factorial(k) * factorial(n - k))
 
 
@@ -270,6 +275,7 @@ def _zstat_generic(
 
 @nb.njit(fastmath=True)
 def quad_trap(f, xmin, xmax, args=(), n=100):
+    """Compute a definite integral"""
     h = (xmax - xmin) / n
     integral = h * (f(xmin, args) + f(xmax, args)) / 2
     for k in range(n):
@@ -280,6 +286,7 @@ def quad_trap(f, xmin, xmax, args=(), n=100):
 
 @nb.njit(fastmath=True)
 def quad_trap_alt(f, xmin, xmax, npoints=10):
+    """Alternative form of computing a definite integral"""
     area = 0
     x = np.linspace(xmin, xmax, npoints)
     n = len(x)
@@ -303,13 +310,103 @@ def t_cdf_integrand(x, df):
     )
 
 
+@nb.njit(fastmath=True)
+def incompbeta(a: float, b: float, x: float) -> float:
+    """Incomplete Beta Function
+    https://en.wikipedia.org/wiki/Beta_function#Incomplete_beta_function
+    """
+    if x == 0:
+        return 0
+    elif x == 1:
+        return 1
+    else:
+        lbeta = (
+            math.lgamma(a + b)
+            - math.lgamma(a)
+            - math.lgamma(b)
+            + a * math.log(x)
+            + b * math.log(1 - x)
+        )
+        if x < (a + 1) / (a + b + 2):
+            return math.exp(lbeta) * contfractbeta(a, b, x) / a
+        else:
+            return 1 - math.exp(lbeta) * contfractbeta(b, a, 1 - x) / b
+
+
 @nb.njit(nb.float64(nb.float64, nb.float64), fastmath=True)
-def t_cdf(x, df):
+def beta(a: float, b: float) -> float:
+    """Beta function
+    https://en.wikipedia.org/wiki/Beta_function
+    """
+
+    beta = math.gamma(a) * math.gamma(b) / math.gamma(a + b)
+    return beta
+
+
+@nb.njit(nb.float64(nb.float64, nb.float64), fastmath=True)
+def _beta(a: float, b: float) -> float:
+    """Alternative form of Beta function
+    https://en.wikipedia.org/wiki/Beta_function
+    """
+    beta = math.exp(math.lgamma(a) + math.lgamma(b) - math.lgamma(a + b))
+    return beta
+
+
+@nb.njit(fastmath=True)
+def contfractbeta(a: float, b: float, x: float, ITMAX: int = 200) -> float:
+    """Evaluates the continued fraction form of the incomplete Beta function"""
+
+    EPS = 3.0e-7
+    bm = az = am = 1.0
+    qab = a + b
+    qap = a + 1.0
+    qam = a - 1.0
+    bz = 1.0 - qab * x / qap
+
+    for i in range(ITMAX + 1):
+        em = float(i + 1)
+        tem = em + em
+        d = em * (b - em) * x / ((qam + tem) * (a + tem))
+        ap = az + d * am
+        bp = bz + d * bm
+        d = -(a + em) * (qab + em) * x / ((qap + tem) * (a + tem))
+        app = ap + d * az
+        bpp = bp + d * bz
+        aold = az
+        am = ap / bpp
+        bm = bp / bpp
+        az = app / bpp
+        bz = 1.0
+        if abs(az - aold) < (EPS * abs(az)):
+            return az
+    print(
+        "a or b too large or given ITMAX too small for computing incomplete beta"
+        " function."
+    )
+    return np.nan
+
+
+@nb.njit(fastmath=True)
+def t_cdf(x: float, df: float) -> float:
+    """Student 's t-distribution cumulative distribution function"""
+    return 1 - 0.5 * incompbeta(df / 2, 0.5, df / (x**2 + df))
+
+
+@nb.njit(nb.float64(nb.float64, nb.float64), fastmath=True)
+def _t_cdf(x: float, df: float) -> float:
+    """Alternative form of Student 's t-distribution cumulative distribution function"""
     return quad_trap(t_cdf_integrand, -10, x, args=(df))
 
 
 @nb.njit(fastmath=True)
-def t_pdf(x, df):
+def t_pdf(x: float, df: float) -> float:
+    """Student's t-distribution probability density function"""
+    return (1 / (np.sqrt(df) * beta(0.5, df / 2))) / (1 + x**2 / df) ** ((df + 1) / 2)
+
+
+@nb.njit(fastmath=True)
+def _t_pdf(x: float, df: float) -> float:
+    """Alternative form of Student's t-distribution probability density function"""
     return math.gamma((df + 1) / 2) / (
         math.sqrt(math.pi * df)
         * math.gamma(df / 2)
