@@ -1,12 +1,12 @@
 import numpy as np
 from numpy import typing as npt
 from src.fwer import adjusted_p as ap
-from numba import njit
+import numba as nb
 
 # TODO: Write documentatiaon
 
 
-@njit
+@nb.njit(fastmath=True)
 def bonferroni_procedure(
     p_vals: npt.NDArray[np.number], alpha: float = 0.05
 ) -> npt.NDArray[np.bool_]:
@@ -14,15 +14,15 @@ def bonferroni_procedure(
     return _p_vals < ap.bonferroni_alpha(m, alpha)
 
 
-@njit
+@nb.njit(fastmath=True)
 def sidak_procedure(
     p_vals: npt.NDArray[np.number], alpha: float = 0.05
 ) -> npt.NDArray[np.bool_]:
-    p, m = np.asarray(p_vals), len(p_vals)
-    return p < ap.sidak_alpha(m, alpha)
+    _p_vals, m = np.asarray(p_vals), len(p_vals)
+    return _p_vals < ap.sidak_alpha(m, alpha)
 
 
-@njit
+@nb.njit(fastmath=True)
 def holm_step_down_procedure(
     p_vals: npt.NDArray[np.number], alpha: float = 0.05
 ) -> npt.NDArray[np.bool_]:
@@ -35,7 +35,7 @@ def holm_step_down_procedure(
     return reject
 
 
-@njit
+@nb.njit(fastmath=True)
 def hochberg_step_up_procedure(
     p_vals: npt.NDArray[np.number], alpha: float = 0.05
 ) -> npt.NDArray[np.bool_]:
