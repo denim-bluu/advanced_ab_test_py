@@ -263,8 +263,6 @@ def quad_trap_alt(f, xmin, xmax, npoints=10):
     return area
 
 
-# TODO: T-stats function with big dof return NaN due to the Gamma function.
-# Need to find the approximation? alternative?
 @nb.njit(nb.float64(nb.float64, nb.float64), fastmath=True)
 def t_cdf_integrand(x, df):
     return (
