@@ -14,6 +14,7 @@ pandas = "^1.5.2"
 numpy = "^1.23.5"
 scipy = "^1.9.3"
 pandas-gbq = "^0.18.1"
+plotly = "^5.11.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
