@@ -15,19 +15,20 @@ def multiple_means_mc_power_analysis(
     relative_effect: float,
     alpha: float = ALPHA,
     n_simulation: int = N_SIMULATION,
-) -> tuple[int | float, np.number | float, np.number]:
+) -> dict[str, float | np.float_]:
     """Monte Carlo simulation for power analysis for multiple means tests
 
     Args:
         sample_size (int): Size of the sample
         sample_mean (float): Sample mean
         sample_sd (float): Sample standard deviation
-        relative_effect (float): Minimum relative effect
+        n_variants (int): Number of variants
+        relative_effect (float): Relative effect, or minimum interest of effect
         alpha (float, optional): Type I error rate. Defaults to 0.05.
         n_simulation (int, optional): Number of simulations. Defaults to 2000.
 
     Returns:
-        tuple[int, np.number]: Sample size and corresponding statistical power
+        dict[str, float | np.float_]: Sample size and corresponding statistical power
     """
     n_per_variant = int(np.floor(sample_size / (n_variants + 1)))
     significance_either = np.zeros(shape=n_simulation, dtype=np.bool8)
@@ -49,7 +50,11 @@ def multiple_means_mc_power_analysis(
         # Either one is significant or all
         significance_either[i] = np.any(tests)
         significance_all[i] = np.all(tests)
-    return sample_size, np.mean(significance_either), np.mean(significance_all)
+    return {
+        "sample_size": sample_size,
+        "power_either_significant": np.mean(significance_either),
+        "power_all_significant": np.mean(significance_all),
+    }
 
 
 @njit(fastmath=True, parallel=True)
@@ -59,22 +64,20 @@ def multiple_proportions_mc_power_analysis(
     n_variants: int,
     relative_effect: float,
     alpha: float = ALPHA,
-    alternative: str = ALTERNATIVE,
     n_simulation: int = N_SIMULATION,
-) -> tuple[int | float, np.number | float, np.number]:
+) -> dict[str, float | np.float_]:
     """Monte Carlo simulation for power analysis for multiple proportions tests
 
     Args:
         sample_size (int): Size of the sample
-        sample_mean (float): Sample mean
-        sample_sd (float): Sample standard deviation
-        relative_effect (float): Minimum relative effect
+        base_rate (float): Base conversion rate
+        n_variants (int): Number of variants
+        relative_effect (float): Relative effect, or minimum interest of effect
         alpha (float, optional): Type I error rate. Defaults to 0.05.
-        alternative (str, optional): Test type. Defaults to "two-sided".
         n_simulation (int, optional): Number of simulations. Defaults to 2000.
 
     Returns:
-        tuple[int, np.number]: Sample size and corresponding statistical power
+        dict[str, float | np.float_]: Sample size and corresponding statistical power
     """
     n_per_variant = int(np.floor(sample_size / (n_variants + 1)))
     significance_either = np.zeros(shape=n_simulation, dtype=np.bool8)
@@ -90,7 +93,6 @@ def multiple_proportions_mc_power_analysis(
             p_vals[j] = two_proportions_ztest(
                 count=np.array([np.sum(variant_sample), np.sum(control_sample)]),
                 nobs=np.array([n_per_variant, n_per_variant]),
-                alternative=alternative,
             )[1]
 
         # Hypothesis testing
@@ -99,77 +101,8 @@ def multiple_proportions_mc_power_analysis(
         # Either one is significant or all
         significance_either[i] = np.any(tests)
         significance_all[i] = np.all(tests)
-    return sample_size, np.mean(significance_either), np.mean(significance_all)
-
-
-@nb.njit(fastmath=True)
-def two_means_mc_power_analysis(
-    sample_size: int,
-    sample_mean: float,
-    sample_sd: float,
-    relative_effect: float,
-    alpha: float = ALPHA,
-    n_simulation: int = N_SIMULATION,
-) -> tuple[int | float, np.number]:
-    """Monte Carlo simulation for power analysis for two means
-
-    Args:
-        sample_size (int): Size of the sample
-        sample_mean (float): Sample mean
-        sample_sd (float): Sample standard deviation
-        relative_effect (float): Minimum relative effect
-        alpha (float, optional): Type I error rate. Defaults to 0.05.
-        n_simulation (int, optional): Number of simulations. Defaults to 2000.
-
-    Returns:
-        tuple[int, np.number]: Sample size and corresponding statistical power
-    """
-    control_data = np.random.normal(loc=sample_mean, scale=sample_sd, size=sample_size)
-    # Multiply the control data by the relative effect, this will shift the distribution
-    # of the variant left or right depending on the direction of the relative effect
-    variant_data = control_data * relative_effect
-    significance_results = np.empty(n_simulation)
-
-    for i in range(n_simulation):
-        # Randomly allocate the sample data to the control and variant
-        rv = np.random.binomial(1, 0.5, size=sample_size)
-        control_sample = control_data[rv == True]
-        variant_sample = variant_data[rv == False]
-
-        # Use Welch's t-test, make no assumptions on tests for equal variances
-        test_result = independent_ttest(control_sample, variant_sample)
-        # Test for significance
-        significance_results[i] = test_result[1] <= alpha
-    # The power is the number of times we have a significant result
-    # as we are assuming the alternative hypothesis is true
-    return sample_size, np.mean(significance_results)
-
-
-@njit(fastmath=True)
-def two_proportions_mc_power_analysis(
-    sample_size: int | float,
-    base_conversion_rate: float,
-    relative_effect: float,
-    alpha: float = ALPHA,
-    alternative: str = ALTERNATIVE,
-    n_simulation: int = N_SIMULATION,
-) -> tuple[int | float, np.number]:
-    sample_per_variant = int(np.floor(sample_size / 2))
-
-    significance_results = np.zeros(shape=n_simulation, dtype=np.bool8)
-    for i in range(n_simulation):
-        # # Randomly generate binomial data for variant and control with different
-        # success probabilities
-        control_sample = np.random.binomial(
-            1, base_conversion_rate, size=sample_per_variant
-        )
-        variant_sample = np.random.binomial(
-            1, base_conversion_rate * relative_effect, size=sample_per_variant
-        )
-        test_result = two_proportions_ztest(
-            count=np.array([sum(variant_sample), sum(control_sample)]),
-            nobs=np.array([sample_per_variant, sample_per_variant]),
-            alternative=alternative,
-        )
-        significance_results[i] = test_result[1] <= alpha  # Test for significance
-    return sample_size, np.mean(significance_results)
+    return {
+        "sample_size": sample_size,
+        "power_either_significant": np.mean(significance_either),
+        "power_all_significant": np.mean(significance_all),
+    }
