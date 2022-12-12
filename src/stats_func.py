@@ -1,11 +1,12 @@
 import math
-import warnings
-from typing import Any, Sequence
+from typing import Sequence
 
 import numba as nb
 import numpy as np
 from numpy import typing as npt
 from scipy import stats as st
+
+# TODO: Add documentatiaon
 
 
 def shift_array(
@@ -33,6 +34,7 @@ def shift_array(
     return result
 
 
+@nb.njit(parallel=True, fastmath=True)
 def pooled_stdv(
     stdv1: float | int, n1: float | int, stdv2: float | int, n2: float | int
 ) -> float | int:
@@ -50,6 +52,7 @@ def pooled_stdv(
     return np.sqrt(((n1 - 1) * stdv1**2 + (n2 - 1) * stdv2**2) / (n1 + n2 - 2))
 
 
+@nb.njit(parallel=True, fastmath=True)
 def pooled_stde(
     stdv1: float | int, n1: float | int, stdv2: float | int, n2: float | int
 ) -> float | int:
@@ -87,7 +90,7 @@ def ci_two_mean_difference(
         [
             (
                 round(p, 5),
-                np.array(mean_diff + dist_func(p / 100.0, df=dof) * stde, dtype=float),
+                np.array(mean_diff + dist_func(p / 100.0, df=dof) * stde),
             )
             for p in interval
         ]
@@ -160,15 +163,12 @@ def independent_ttest(
     x1_bar, x2_bar = np.mean(x1), np.mean(x2)
     n1, n2 = len(x1), len(x2)
     dof1, dof2 = n1 - 1, n2 - 1
-
     var_x1, var_x2 = unbiased_variance(x1), unbiased_variance(x2)
 
     # pooled sample variance
     pool_var = ((dof1 * var_x1) + (dof2 * var_x2)) / (dof1 + dof2)
-
     # standard error
     std_error = np.sqrt(pool_var * (1.0 / n1 + 1.0 / n2))
-
     # calculate t statistics
     tstat = (x1_bar - x2_bar) / std_error
     return tstat, 2 * (1 - t_cdf(tstat, dof1 + dof2))
@@ -197,16 +197,12 @@ def two_proportions_ztest(
     count: npt.NDArray[np.number],
     nobs: npt.NDArray[np.number],
     value: float = 0.0,
-    alternative: str = "two-sided",
     prop_var: bool = False,
 ):
     count = np.asarray(count)
     nobs = np.asarray(nobs)
-
     prop = count / nobs
-
     diff = prop[0] - prop[1] - value
-
     p_pooled = np.sum(count) * 1.0 / np.sum(nobs)
 
     nobs_fact = np.sum(1.0 / nobs)
@@ -214,7 +210,8 @@ def two_proportions_ztest(
         p_pooled = prop_var
     var_ = np.float64(p_pooled) * np.float64(1 - p_pooled) * np.float64(nobs_fact)
     std_diff = np.sqrt(var_)
-    return _zstat_generic2(diff, std_diff, alternative)
+    zstat = diff / std_diff
+    return zstat, (1 - norm_cdf(np.abs(zstat))) * 2
 
 
 @nb.njit(fastmath=True)
@@ -222,7 +219,6 @@ def ztest(
     x1: npt.NDArray[np.number],
     x2: None | npt.NDArray[np.number] = None,
     value: float | int = 0,
-    alternative: str = "two-sided",
     ddof: float = 1.0,
 ):
     nobs1 = x1.shape[0]
@@ -240,37 +236,8 @@ def ztest(
         x2_mean = 0
 
     std_diff = np.sqrt(var_pooled)
-    return _zstat_generic(x1_mean, x2_mean, std_diff, alternative, diff=value)
-
-
-@nb.njit(fastmath=True)
-def _zstat_generic2(value: float | int, std: float, alternative: str):
-    zstat = value / std
-    if alternative in ["two-sided", "2-sided", "2s"]:
-        pvalue = (1 - norm_cdf(np.abs(zstat))) * 2
-    elif alternative in ["larger", "l"]:
-        pvalue = 1 - norm_cdf(zstat)
-    elif alternative in ["smaller", "s"]:
-        pvalue = norm_cdf(zstat)
-    else:
-        raise ValueError("invalid alternative")
-    return zstat, pvalue
-
-
-@nb.njit(fastmath=True)
-def _zstat_generic(
-    value1: float, value2: float, std_diff: float, alternative, diff: float | int = 0
-):
-    zstat = (value1 - value2 - diff) / std_diff
-    if alternative in ["two-sided", "2-sided", "2s"]:
-        pvalue = (1 - norm_cdf(np.abs(zstat))) * 2
-    elif alternative in ["larger", "l"]:
-        pvalue = 1 - norm_cdf(zstat)
-    elif alternative in ["smaller", "s"]:
-        pvalue = norm_cdf(zstat)
-    else:
-        raise ValueError("invalid alternative")
-    return zstat, pvalue
+    zstat = (x1_mean - x2_mean - value) / std_diff
+    return zstat, (1 - norm_cdf(np.abs(zstat))) * 2
 
 
 @nb.njit(fastmath=True)
