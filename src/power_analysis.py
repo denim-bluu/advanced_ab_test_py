@@ -1,7 +1,7 @@
 from functools import partial
 from typing import Iterable
 
-import multiprocess as mp
+from joblib import Parallel, delayed, cpu_count
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -39,21 +39,18 @@ def run_multiple_means_power_analysis_per_scenario(
         dict[str, pd.DataFrame]: Dictionary of power analysis results for each MDE
     """
     output = {k: pd.DataFrame() for k in relative_effects}
-    pool = mp.Pool(mp.cpu_count() - 1)
     for re in relative_effects:
-        result = pool.map(
-            partial(
-                multiple_means_mc_power_analysis,
-                sample_mean=sample_mean,
-                sample_sd=sample_sd,
-                relative_effect=re,
-                n_variants=n_variants,
-                alpha=alpha,
-                n_simulation=n_simulation,
-                all_significant=all_significant,
-            ),
-            sample_sizes,
+        fn = partial(
+            multiple_means_mc_power_analysis,
+            sample_mean=sample_mean,
+            sample_sd=sample_sd,
+            relative_effect=re,
+            n_variants=n_variants,
+            alpha=alpha,
+            n_simulation=n_simulation,
+            all_significant=all_significant,
         )
+        result = Parallel(n_jobs=cpu_count())(delayed(fn)(i) for i in sample_sizes)
         sample, power = np.array(result).T
         output[str(re)] = PowerAnalysisResult(sample, power).convert_to_df()
     return output
@@ -85,20 +82,18 @@ def run_multiple_proportions_power_analysis_per_scenario(
         dict[str, pd.DataFrame]: Dictionary of power analysis results for each MDE
     """
     output: dict[str, pd.DataFrame] = {}
-    pool = mp.Pool(mp.cpu_count() - 1)
     for re in relative_effects:
-        result = pool.map(
-            partial(
-                multiple_proportions_mc_power_analysis,
-                base_rate=base_rate,
-                n_variants=n_variants,
-                relative_effect=re,
-                alpha=alpha,
-                n_simulation=n_simulation,
-                all_significant=all_significant,
-            ),
-            sample_sizes,
+        fn = partial(
+            multiple_proportions_mc_power_analysis,
+            base_rate=base_rate,
+            n_variants=n_variants,
+            relative_effect=re,
+            alpha=alpha,
+            n_simulation=n_simulation,
+            all_significant=all_significant,
         )
+        result = Parallel(n_jobs=cpu_count())(delayed(fn)(i) for i in sample_sizes)
+
         sample, power = np.array(result).T
         output[str(re)] = PowerAnalysisResult(sample, power).convert_to_df()
     return output
