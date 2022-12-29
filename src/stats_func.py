@@ -6,8 +6,6 @@ import numpy as np
 from numpy import typing as npt
 from scipy import stats as st
 
-# TODO: Add documentatiaon
-
 
 def shift_array(
     arr: np.ndarray, num: int, fill_value: float | int = np.nan
@@ -34,11 +32,51 @@ def shift_array(
     return result
 
 
-@nb.njit(parallel=True, fastmath=True)
-def pooled_stdv(
+def poooled_p(
+    event1: npt.NDArray[np.float_ | np.int_],
+    trial1: npt.NDArray[np.float_ | np.int_],
+    event2: npt.NDArray[np.float_ | np.int_],
+    trial2: npt.NDArray[np.float_ | np.int_],
+) -> npt.NDArray[np.float_]:
+    """Pooled proportions
+
+    Args:
+        event1 (npt.NDArray[np.float_ | np.int_]): Number of events for group 1
+        trial1 (npt.NDArray[np.float_ | np.int_]): Number of trials for group 1
+        event2 (npt.NDArray[np.float_ | np.int_]): Number of events for group 2
+        trial2 (npt.NDArray[np.float_ | np.int_]): Number of trials for group 2
+
+    Returns:
+        float | int: Pooled proportions
+    """
+    return (event1 + event2) / (trial1 + trial2)
+
+
+def proportions_pooled_stde(
+    event1: npt.NDArray[np.float_ | np.int_],
+    trial1: npt.NDArray[np.float_ | np.int_],
+    event2: npt.NDArray[np.float_ | np.int_],
+    trial2: npt.NDArray[np.float_ | np.int_],
+) -> npt.NDArray[np.float_]:
+    """Pool standard deviation calculation for two proportions
+
+    Args:
+        event1 (npt.NDArray[np.float_ | np.int_]): Number of events for group 1
+        trial1 (npt.NDArray[np.float_ | np.int_]): Number of trials for group 1
+        event2 (npt.NDArray[np.float_ | np.int_]): Number of events for group 2
+        trial2 (npt.NDArray[np.float_ | np.int_]): Number of trials for group 2
+
+    Returns:
+        npt.NDArray[np.float_]: Pooled standard error of proportions
+    """
+    p = poooled_p(event1, trial1, event2, trial2)
+    return np.sqrt(p * (1 - p) * (1.0 / trial1 + 1.0 / trial2))
+
+
+def continuous_pooled_stdv(
     stdv1: float | int, n1: float | int, stdv2: float | int, n2: float | int
 ) -> float | int:
-    """Pool standard deviation calculation
+    """Pool standard deviation calculation for two continuous samples
 
     Args:
         stdv1 (float | int): Standard deviation of group 1
@@ -53,10 +91,10 @@ def pooled_stdv(
 
 
 @nb.njit(parallel=True, fastmath=True)
-def pooled_stde(
+def continuous_pooled_stde(
     stdv1: float | int, n1: float | int, stdv2: float | int, n2: float | int
 ) -> float | int:
-    """Pool standard error
+    """Pool standard error for two continuous samples
 
     Args:
         stdv1 (float | int): Standard deviation of group 1
@@ -67,7 +105,7 @@ def pooled_stde(
     Returns:
         float | int: Pooled standard error
     """
-    return pooled_stdv(stdv1, n1, stdv2, n2) * np.sqrt(1.0 / n1 + 1.0 / n2)
+    return continuous_pooled_stdv(stdv1, n1, stdv2, n2) * np.sqrt(1.0 / n1 + 1.0 / n2)
 
 
 def ci_two_mean_difference(
@@ -81,7 +119,7 @@ def ci_two_mean_difference(
 ) -> dict[float, npt.NDArray[np.number]]:
     mean_diff = mean1 - mean2
     dof = n1 + n2 - 2
-    stde = pooled_stde(stdv1, n1, stdv2, n2)
+    stde = continuous_pooled_stde(stdv1, n1, stdv2, n2)
 
     # If the sample sizes are larger, that is both n1, n2 > 30, then use z-table.
     dist_func = st.norm.ppf if (n1 > 30) and (n2 > 30) else st.t.ppf
@@ -98,28 +136,8 @@ def ci_two_mean_difference(
 
 
 @nb.njit(fastmath=True)
-def erf(x):
-    # save the sign of x
-    sign = 1 if x >= 0 else -1
-    x = abs(x)
-
-    # constants
-    a1 = 0.254829592
-    a2 = -0.284496736
-    a3 = 1.421413741
-    a4 = -1.453152027
-    a5 = 1.061405429
-    p = 0.3275911
-
-    # A&S formula 7.1.26
-    t = 1.0 / (1.0 + p * x)
-    y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * math.exp(-x * x)
-    return sign * y  # erf(-x) = -erf(x)
-
-
-@nb.njit(fastmath=True)
 def norm_cdf(x: float) -> float:
-    return 0.5 * (1 + erf(x / math.sqrt(2)))
+    return 0.5 * (1 + math.erf(x / math.sqrt(2)))
 
 
 @nb.njit(fastmath=True)

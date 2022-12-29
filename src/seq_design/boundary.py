@@ -10,49 +10,28 @@ error probability spending functions. Communications in Statistics - Theory Meth
     using error spending functions. Journal of biopharmaceutical statistics, 30(2), 
     351–363.
 """
-from dataclasses import dataclass
+from attrs import define, field
 
-from matplotlib import pyplot as plt
-from matplotlib.figure import Figure
-from src.base_fields import *
 
 import numpy as np
+import plotly.graph_objects as go
 from numpy import typing as npt
 from scipy import stats as st
 from scipy.optimize import brentq as root
 from statsmodels.sandbox.distributions.extras import mvnormcdf
 
+from src.base_fields import *
 from src.seq_design import spend_func as spend
 from util.stdout import suppress_stdout
+from util.data_cls_func import floating_array
+from src.base_fields import TestMetric
 
 
-@dataclass
+@define
 class SDBoundary:
-    upper: npt.NDArray[np.number]
-    lower: npt.NDArray[np.number]
-    ts: npt.NDArray[np.number]
-
-
-def fx1(x, ub, covm, tprob) -> float:
-    kn = np.shape(ub)
-    lb = np.repeat(-np.inf, kn)
-    upper = np.append(ub, [np.inf], axis=0)
-    lower = np.append(lb, [x], axis=0)
-    umu = np.zeros_like(kn[0] + 1)
-    with suppress_stdout():
-        pmv = mvnormcdf(upper=upper, lower=lower, mu=umu, cov=covm)
-    return tprob - pmv
-
-
-def fx2(x, lb, eta_m, ts, covm, tprob) -> float:
-    kn = np.shape(lb)
-    ub = np.repeat(np.inf, kn)
-    upper = np.append(ub, [x], axis=0)
-    lower = np.append(lb, [-np.inf], axis=0)
-    lmu = eta_m * np.sqrt(ts[0 : kn[0] + 1])
-    with suppress_stdout():
-        pmv = mvnormcdf(upper=upper, lower=lower, mu=lmu, cov=covm)
-    return tprob - pmv
+    upper: npt.NDArray[np.number] = field(converter=floating_array)
+    lower: npt.NDArray[np.number] = field(converter=floating_array)
+    ts: npt.NDArray[np.number] = field(converter=floating_array)
 
 
 def sequential_design(
@@ -61,6 +40,26 @@ def sequential_design(
     beta: float = BETA,
     option: spend.SpendOptions = spend.SpendOptions.OBF,
 ) -> SDBoundary:
+    def fx1(x, ub, covm, tprob) -> float:
+        kn = np.shape(ub)
+        lb = np.repeat(-np.inf, kn)
+        upper = np.append(ub, [np.inf], axis=0)
+        lower = np.append(lb, [x], axis=0)
+        umu = np.zeros_like(kn[0] + 1)
+        with suppress_stdout():
+            pmv = mvnormcdf(upper=upper, lower=lower, mu=umu, cov=covm)
+        return tprob - pmv
+
+    def fx2(x, lb, eta_m, ts, covm, tprob) -> float:
+        kn = np.shape(lb)
+        ub = np.repeat(np.inf, kn)
+        upper = np.append(ub, [x], axis=0)
+        lower = np.append(lb, [-np.inf], axis=0)
+        lmu = eta_m * np.sqrt(ts[0 : kn[0] + 1])
+        with suppress_stdout():
+            pmv = mvnormcdf(upper=upper, lower=lower, mu=lmu, cov=covm)
+        return tprob - pmv
+
     if option == spend.SpendOptions.OBF:
         alpha_spend_func = spend.obrien_fleming
     elif option == spend.SpendOptions.POCOCK:
@@ -133,16 +132,57 @@ def sequential_design(
     return SDBoundary(upper=ub, lower=lb, ts=ts)
 
 
-def vis_sequential_design(boundary: SDBoundary) -> tuple[Figure, plt.Axes]:
+def vis_sequential_design(boundary: SDBoundary) -> go.Figure:
     x, ub, lb = boundary.ts, boundary.upper, boundary.lower
-    fig, ax = plt.subplots()
-    ax.plot(x, ub, label="Upper Bound")
-    ax.plot(x, lb, label="Lower Bound")
-    ax.set_xlabel("Sample / Information Proportion", fontsize=14)
-    ax.set_ylabel("Z-score", fontsize=14)
-    plt.title(f"Group Sequential Method for early stopping (stage={len(x)})")
-    for index in range(len(x)):
-        ax.text(x[index], ub[index], round(ub[index], 2), size=12)
-        ax.text(x[index], lb[index], round(lb[index], 2), size=12)
-    plt.legend()
-    return fig, ax
+    fig = go.Figure()
+    fig.update_layout(
+        title_text=f"Group Sequential Method for early stopping (stage={len(x)})",
+        xaxis_title="Sample / Information Proportion",
+        yaxis_title="Z Score",
+        legend_title="Legend",
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=ub,
+            mode="lines+markers+text",
+            name="Upper Bound",
+            marker=dict(color="blue"),
+            line=dict(dash="dot"),
+            text=np.round(ub, 2),
+            textposition="top right",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=lb,
+            mode="lines+markers+text",
+            name="Lower Bound",
+            marker=dict(color="red"),
+            line=dict(dash="dot"),
+            text=np.round(lb, 2),
+            textposition="bottom right",
+        )
+    )
+    return fig
+
+
+def plot_experiments(
+    boundary: SDBoundary, test_metric: dict[str, TestMetric]
+) -> go.Figure:
+    fig = vis_sequential_design(boundary)
+    for k, v in test_metric.items():
+        if k != "control":
+            fig.add_trace(
+                go.Scatter(x=v.treatment.sample_proportion, y=v.z_score, name=k)
+            )
+            fig.add_annotation(
+                xref="x",
+                yref="y domain",
+                x=1.0,
+                y=0.0,
+                text=f"Fixed Sample Size per variant is {v.control.fixed_sample_size}",
+                arrowhead=2,
+            )
+    return fig

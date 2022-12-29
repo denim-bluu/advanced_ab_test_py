@@ -1,63 +1,216 @@
-import numpy as np
-from scipy import stats as st
-from src.sample_size.simulation.calculator import *
-import multiprocess as mp
 from functools import partial
+from typing import Iterable
+
+import multiprocess as mp
+import numpy as np
 import pandas as pd
-from tqdm import tqdm
+import plotly.express as px
+import plotly.graph_objects as go
 
-import matplotlib.pyplot as plt
-
-sample_base_rate = 0.3852
-sample_data = st.binom.rvs(1, sample_base_rate, size=900000)
-sample_sizes = range(5000, 200000 + 1, 2500)  # Sample sizes we will test over
-relative_effect = 1.03
-
-alpha = 0.05
-sims = 3000
-alternative = "two-sided"
+from src.base_fields import PowerAnalysisResult
+from src.sample_size.simulation.calculator import *
 
 
-pool = mp.Pool(mp.cpu_count() - 1)
-result = pool.map(
-    partial(
-        multiple_proportions_mc_power_analysis,
-        base_rate=np.mean(sample_data),
-        n_variants=2,
-        relative_effect=relative_effect,
-        alpha=0.05,
-        n_simulation=sims,
-        alternative=alternative,
-    ),
-    tqdm(
-        np.array(sample_sizes),
-        total=len(sample_sizes),
-        desc="🚀 Running simulations",
-        colour="red",
-    ),
-)
+def run_multiple_means_power_analysis_per_scenario(
+    sample_sizes: Iterable,
+    relative_effects: Iterable,
+    sample_mean: float,
+    sample_sd: float,
+    n_variants: int = 1,
+    alpha: float = ALPHA,
+    n_simulation: int = N_SIMULATION,
+    all_significant: bool = False,
+) -> dict[str, pd.DataFrame]:
+    """Run multiple iterations of multiple means power analysis
+
+    Args:
+        sample_sizes (Iterable): Sequence of sample sizes to iterate
+        relative_effects (Iterable): Sequence of relative effect sizes to iterate
+        sample_size (int): Size of the sample
+        sample_mean (float): Sample mean
+        sample_sd (float): Sample standard deviation
+        n_variants (int): Number of variants
+        relative_effect (float): Relative effect, or minimum interest of effect
+        alpha (float, optional): Type I error rate. Defaults to 0.05.
+        n_simulation (int, optional): Number of simulations. Defaults to 2000.
+        all_significant (bool, optional): Multiple variants test criteria. Defaults to False.
+
+    Returns:
+        dict[str, pd.DataFrame]: Dictionary of power analysis results for each MDE
+    """
+    output = {k: pd.DataFrame() for k in relative_effects}
+    pool = mp.Pool(mp.cpu_count() - 1)
+    for re in relative_effects:
+        result = pool.map(
+            partial(
+                multiple_means_mc_power_analysis,
+                sample_mean=sample_mean,
+                sample_sd=sample_sd,
+                relative_effect=re,
+                n_variants=n_variants,
+                alpha=alpha,
+                n_simulation=n_simulation,
+                all_significant=all_significant,
+            ),
+            sample_sizes,
+        )
+        sample, power = np.array(result).T
+        output[str(re)] = PowerAnalysisResult(sample, power).convert_to_df()
+    return output
 
 
-result = pd.DataFrame(result, columns=["Sample Size", "Power for any", "Power for all"])
+def run_multiple_proportions_power_analysis_per_scenario(
+    sample_sizes: Iterable,
+    relative_effects: Iterable,
+    base_rate: float,
+    n_variants: int = 1,
+    alpha: float = ALPHA,
+    n_simulation: int = N_SIMULATION,
+    all_significant: bool = False,
+) -> dict[str, pd.DataFrame]:
+    """Run multiple iterations of multiple means power analysis
 
-power_col = "Power for any"
-x = result["Sample Size"]
-y = result[power_col]
+    Args:
+        sample_sizes (Iterable): Sequence of sample sizes to iterate
+        relative_effects (Iterable): Sequence of relative effect sizes to iterate
+        sample_size (int): Size of the sample
+        base_rate (float): Base conversion rate
+        n_variants (int): Number of variants
+        relative_effect (float): Relative effect, or minimum interest of effect
+        alpha (float, optional): Type I error rate. Defaults to 0.05.
+        n_simulation (int, optional): Number of simulations. Defaults to 2000.
+        all_significant (bool, optional): Multiple variants test criteria. Defaults to False.
 
-poly = np.polyfit(x, y, 3)
-poly_y = np.minimum(np.poly1d(poly)(x), 1.0)
-plt.style.use("ggplot")
-plt.figure(figsize=[12, 6])
+    Returns:
+        dict[str, pd.DataFrame]: Dictionary of power analysis results for each MDE
+    """
+    output: dict[str, pd.DataFrame] = {}
+    pool = mp.Pool(mp.cpu_count() - 1)
+    for re in relative_effects:
+        result = pool.map(
+            partial(
+                multiple_proportions_mc_power_analysis,
+                base_rate=base_rate,
+                n_variants=n_variants,
+                relative_effect=re,
+                alpha=alpha,
+                n_simulation=n_simulation,
+                all_significant=all_significant,
+            ),
+            sample_sizes,
+        )
+        sample, power = np.array(result).T
+        output[str(re)] = PowerAnalysisResult(sample, power).convert_to_df()
+    return output
 
-fig, ax = plt.subplots()
-ax.scatter(x, y, color="red", alpha=0.5, label="MC Simulation")
-ax.axhline(y=0.8, color="blue", linestyle="--", label="Power Target")
-ax.plot(x, poly_y, color="red")
-ax.set_xlabel("Sample Size Required (2 groups)", fontsize=14)
-ax.set_ylabel("Power", fontsize=14)
-plt.legend()
 
-target_id = min(
-    range(len(result[power_col])), key=lambda i: abs(result[power_col][i] - 0.8)
-)
-print("Minimum sample required for 80% power", result["Sample Size"][target_id])
+def calculate_required_experiment_duration(
+    power_analysis_result: dict[str, pd.DataFrame],
+    weekly_runrate: int | float,
+    target_power: float = 1 - BETA,
+) -> pd.DataFrame:
+    """Calculate the required experiment duration given the weekly run rate
+
+    Args:
+        power_analysis_result (dict[str, pd.DataFrame]): Dictionary of power analysis results for each MDE
+        weekly_runrate (int | float): Weekly run rate
+        target_power (float, optional): Target Power. Defaults to 1-BETA.
+
+    Returns:
+        pd.DataFrame: Table with the required experiment duration per MDE
+    """
+    output = []
+    for k, _df in power_analysis_result.items():
+        df = _df.copy()
+        df["beyond_target_power"] = df["power"] >= target_power
+        fixed_size = df["sample_size"].loc[df["beyond_target_power"] > 0].iloc[0]
+        output.append([k, fixed_size, fixed_size / weekly_runrate])
+    return pd.DataFrame(
+        output, columns=["mde", "fixed_sample_size", "duration_week"]
+    ).round(2)
+
+
+def visualise_power_analysis(
+    power_analysis_result: dict[str, pd.DataFrame],
+    current_sasmple_size: int | float | None = None,
+    target_power: float = 1 - BETA,
+) -> go.Figure:
+    """Visualise the multiple iterations of power analysis results
+
+    Args:
+        power_analysis_result (dict[str, pd.DataFrame]): Dictionary of power analysis results for each MDE
+        current_sasmple_size (int | float | None, optional): Current sample size collected. Defaults to None.
+        target_power (float, optional): Target Power. Defaults to 1-BETA.
+
+    Returns:
+        go.Figure: Visulisation of the multiple iterations of power analysis results
+    """
+    palette = px.colors.qualitative.Plotly
+    fig = go.Figure()
+    fig.update_layout(
+        title_text="Power Analysis",
+        xaxis_title="Sample Size",
+        yaxis_title="Power",
+        legend_title="Legend",
+    )
+    fig.add_hline(
+        y=target_power,
+        line_width=1,
+        line_dash="dash",
+        line_color="red",
+        annotation_text=f"{round(target_power*100, 2)}% Power Target",
+        annotation_position="top left",
+        annotation=dict(font_size=10),
+    )
+    for i, (k, df) in enumerate(power_analysis_result.items()):
+        x = df["sample_size"].to_numpy()
+        y1 = df["power"].to_numpy()
+        y2 = np.where(df["power"] >= target_power, df["power"], np.nan)
+        poly = np.polyfit(x, y1, 3)
+        poly_y = np.minimum(np.poly1d(poly)(x), 1.0)
+        if current_sasmple_size:
+            fig.add_vline(
+                x=current_sasmple_size,
+                line_dash="dot",
+                line_width=0.1,
+                line_color="green",
+            )
+            fig.add_vrect(
+                x0=0.0,
+                x1=current_sasmple_size,
+                annotation_text=f"Current Sample Size {current_sasmple_size}",
+                annotation_position="bottom left",
+                fillcolor="green",
+                opacity=0.05,
+                line_width=0,
+            )
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=y1,
+                mode="markers",
+                name=f"MDE: {k}",
+                marker=dict(color=palette[i]),
+                opacity=0.5,
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=y2,
+                mode="markers",
+                name=f"MDE: {k}, Power >= {round(target_power*100, 2)}%",
+                marker=dict(color=palette[i], symbol="star"),
+                opacity=1.0,
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=poly_y,
+                mode="lines",
+                marker=dict(color=palette[i]),
+                showlegend=False,
+            )
+        )
+    return fig

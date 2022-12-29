@@ -1,12 +1,12 @@
 import numpy as np
-from numba import njit
+import numba as nb
 
 from src.base_fields import *
 from src.fwer import procedure
 from src.stats_func import *
 
 
-@njit(fastmath=True, parallel=True)
+@nb.njit(fastmath=True, parallel=True)
 def multiple_means_mc_power_analysis(
     sample_size: int,
     sample_mean: float,
@@ -15,7 +15,8 @@ def multiple_means_mc_power_analysis(
     relative_effect: float,
     alpha: float = ALPHA,
     n_simulation: int = N_SIMULATION,
-) -> dict[str, float | np.float_]:
+    all_significant: bool = False,
+) -> tuple[int | float, float | np.float_]:
     """Monte Carlo simulation for power analysis for multiple means tests
 
     Args:
@@ -28,18 +29,15 @@ def multiple_means_mc_power_analysis(
         n_simulation (int, optional): Number of simulations. Defaults to 2000.
 
     Returns:
-        dict[str, float | np.float_]: Sample size and corresponding statistical power
+        tuple[int | float, float | np.float_, float | np.float_]: Sample size and corresponding statistical power
     """
     n_per_variant = int(np.floor(sample_size / (n_variants + 1)))
-    significance_either = np.zeros(shape=n_simulation, dtype=np.bool8)
-    significance_all = np.zeros(shape=n_simulation, dtype=np.bool8)
+    significance = np.zeros(shape=n_simulation, dtype=np.bool8)
 
     for i in range(n_simulation):
         p_vals = np.empty(n_variants)
+        control_sample = np.random.normal(sample_mean, sample_sd, size=n_per_variant)
         for j in range(n_variants):
-            control_sample = np.random.normal(
-                sample_mean, sample_sd, size=n_per_variant
-            )
             variant_sample = np.random.normal(
                 sample_mean * relative_effect, sample_sd, size=n_per_variant
             )
@@ -48,16 +46,11 @@ def multiple_means_mc_power_analysis(
         tests = procedure.holm_step_down_procedure(p_vals, alpha)
 
         # Either one is significant or all
-        significance_either[i] = np.any(tests)
-        significance_all[i] = np.all(tests)
-    return {
-        "sample_size": sample_size,
-        "power_either_significant": np.mean(significance_either),
-        "power_all_significant": np.mean(significance_all),
-    }
+        significance[i] = np.all(tests) if all_significant else np.any(tests)
+    return sample_size, np.mean(significance)
 
 
-@njit(fastmath=True, parallel=True)
+@nb.njit(fastmath=True, parallel=True)
 def multiple_proportions_mc_power_analysis(
     sample_size: int | float,
     base_rate: float,
@@ -65,7 +58,8 @@ def multiple_proportions_mc_power_analysis(
     relative_effect: float,
     alpha: float = ALPHA,
     n_simulation: int = N_SIMULATION,
-) -> dict[str, float | np.float_]:
+    all_significant: bool = False,
+) -> tuple[int | float, float | np.float_]:
     """Monte Carlo simulation for power analysis for multiple proportions tests
 
     Args:
@@ -77,16 +71,15 @@ def multiple_proportions_mc_power_analysis(
         n_simulation (int, optional): Number of simulations. Defaults to 2000.
 
     Returns:
-        dict[str, float | np.float_]: Sample size and corresponding statistical power
+        tuple[int | float, float | np.float_, float | np.float_]: Sample size and corresponding statistical power
     """
     n_per_variant = int(np.floor(sample_size / (n_variants + 1)))
-    significance_either = np.zeros(shape=n_simulation, dtype=np.bool8)
-    significance_all = np.zeros(shape=n_simulation, dtype=np.bool8)
+    significance = np.zeros(shape=n_simulation, dtype=np.bool8)
 
     for i in range(n_simulation):
         p_vals = np.empty(n_variants)
+        control_sample = np.random.binomial(1, base_rate, size=n_per_variant)
         for j in range(n_variants):
-            control_sample = np.random.binomial(1, base_rate, size=n_per_variant)
             variant_sample = np.random.binomial(
                 1, base_rate * relative_effect, size=n_per_variant
             )
@@ -99,10 +92,5 @@ def multiple_proportions_mc_power_analysis(
         tests = procedure.holm_step_down_procedure(p_vals, alpha)
 
         # Either one is significant or all
-        significance_either[i] = np.any(tests)
-        significance_all[i] = np.all(tests)
-    return {
-        "sample_size": sample_size,
-        "power_either_significant": np.mean(significance_either),
-        "power_all_significant": np.mean(significance_all),
-    }
+        significance[i] = np.all(tests) if all_significant else np.any(tests)
+    return sample_size, np.mean(significance)
