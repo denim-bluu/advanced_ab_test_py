@@ -12,7 +12,7 @@ strenum = "^0.4.8"
 numba = "^0.56.4"
 pandas = "^1.5.2"
 numpy = "^1.23.5"
-scipy = "^1.9.3"
+scipy = "^1.10.0"
 pandas-gbq = "^0.18.1"
 plotly = "^5.11.0"
 
