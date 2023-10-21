@@ -24,15 +24,13 @@ from src.base_fields import *
 from src.seq_design import spend_func as spend
 from util.stdout import suppress_stdout
 from util.data_cls_func import floating_array
-from src.base_fields import TestMetric
-
 
 @define
 class SDBoundary:
     upper: npt.NDArray[np.number] = field(converter=floating_array)
     lower: npt.NDArray[np.number] = field(converter=floating_array)
     ts: npt.NDArray[np.number] = field(converter=floating_array)
-
+    
 
 def sequential_design(
     k: int = N_STAGE,
@@ -165,24 +163,4 @@ def vis_sequential_design(boundary: SDBoundary) -> go.Figure:
             textposition="bottom right",
         )
     )
-    return fig
-
-
-def plot_experiments(
-    boundary: SDBoundary, test_metric: dict[str, TestMetric]
-) -> go.Figure:
-    fig = vis_sequential_design(boundary)
-    for k, v in test_metric.items():
-        if k != "control":
-            fig.add_trace(
-                go.Scatter(x=v.treatment.sample_proportion, y=v.z_score, name=k)
-            )
-            fig.add_annotation(
-                xref="x",
-                yref="y domain",
-                x=1.0,
-                y=0.0,
-                text=f"Fixed Sample Size per variant is {v.control.fixed_sample_size}",
-                arrowhead=2,
-            )
     return fig
