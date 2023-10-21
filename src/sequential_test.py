@@ -8,34 +8,6 @@ from src.seq_design import boundary as bd
 from src.base_fields import VariantTestMetric, TestMetric
 
 
-def retrieve_experiment_df(experiment_id: str, metric_names: list[str]) -> pd.DataFrame:
-    query = f""" 
-    --beginsql
-    SELECT
-        t1.experiment_metric_name,
-        t1.variant_id,
-        t1.days_since_assignment,
-        t1.converting_users_cum AS n_converted,
-        t1.users_counted_total AS n_samples,
-        t2.experiment_sample_size AS fixed_sample_size,
-        t2.min_users_in_variant AS min_users_in_variant,
-    FROM `prod.experiment_conversions`  AS t1
-    LEFT JOIN `prod.experiments_metadata` AS t2
-    ON t1.experiment_id = t2.experiment_id
-    WHERE 
-    t1.experiment_id = '{experiment_id}'
-    AND t1.experiment_metric_name IN ({str([id for id in metric_names])[1:-1]})
-    ORDER BY 1,2,3,4
-    --endsql
-    """
-    df = gbq.read_gbq(query, project_id="monzo-analytics")
-    if df is None or isinstance(df, pd.Series):
-        raise ValueError("No data found.")
-    if "control" not in df["variant_id"].unique():
-        raise ValueError("Control variant must exist within the variant IDs")
-    return df
-
-
 def get_variant_metrics(
     df: pd.DataFrame, sample_size_per_variant: int | float | None = None
 ) -> dict[str, VariantTestMetric]:
