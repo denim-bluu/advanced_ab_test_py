@@ -1,5 +1,8 @@
 # A/B/n Testing Package
 
+## [Medium Blog Post](https://medium.com/@denim.bluu/experimentation-analysis-sequential-test-designs-88b0ac41a9f5)
+
+
 ## Overview
 
 This is a comprehensive Python library that facilitates advanced statistical testing methods, designed to empower data scientists and analysts in their work. This package specifically focuses on:
